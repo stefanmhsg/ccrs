@@ -138,7 +138,7 @@ function New-FixtureRun {
     if ($Ccrs) {
         $logLines.Add("[CcrsAgentArch] [CCRS-EVENT] event=ccrs.opportunistic.detected agent_id=$Agent source=http://127.0.1.1:8080/cells/0 target=http://127.0.1.1:8080/cells/999 type=signifier pattern_id=fixture utility=0.9")
         $logLines.Add("[prioritize] [CCRS-EVENT] event=ccrs.opportunistic.prioritize agent_id=$Agent options_count=2 matched_count=1 selected_uri=http://127.0.1.1:8080/cells/999 selected_original_index=1 selected_has_ccrs=true selected_reordered=true selected_origin=opportunistic-ccrs selected_type=signifier selected_utility=0.9 selected_strategy=null")
-        $logLines.Add("[evaluate] [CCRS-EVENT] event=ccrs.contingency.evaluate.request agent_id=$Agent situation_type=FAILURE current_resource=http://127.0.1.1:8080/cells/0")
+        $logLines.Add("[evaluate] [CCRS-EVENT] event=ccrs.contingency.evaluate.request agent_id=$Agent trigger=blocked_navigation current_resource=http://127.0.1.1:8080/cells/0 failed_action=get http_status=503 error_type=SERVER_FAILURE error_message=service_unavailable")
         $logLines.Add("[evaluate] [CCRS-EVENT] event=ccrs.contingency.strategy.evaluated agent_id=$Agent strategy_id=backtrack result_type=suggestion action_type=navigate action_target=http://127.0.1.1:8080/cells/999 confidence=0.8 rationale=fixture-recovery")
     }
     $cycleDuration = if ($Ccrs) { 400 } else { 200 }

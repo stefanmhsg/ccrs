@@ -290,18 +290,21 @@ Todos:
 
 ### StopStrategy
 
-Current status: mostly library-ready.
+Current status: configurable run-history policy.
 
 Concerns:
 
-- Some HTTP-specific rationale and confidence logic.
-- Stop semantics should be clearly documented as L0 fallback.
+- Outcome reporting exists in the Java trace model but not every adapter reports
+  the eventual agent outcome yet.
+- Consumers must treat `stop` as advisory and retain the final decision.
 
 Todos:
 
-- Review whether HTTP status handling belongs in core or a classifier.
-- Add tests for exhaustion-required vs immediate stop.
-- Document how L0 is treated by `ContingencyCcrs`.
+- Integrate outcome reporting in adapters so `SUCCESS` can end a degradation
+  episode from real agent feedback.
+- Keep regression coverage for no-suggestion and low-confidence thresholds,
+  successful-outcome episode boundaries, one-invocation learned-gate bypass,
+  and advisory stop generation.
 
 ### BacktrackStrategy
 

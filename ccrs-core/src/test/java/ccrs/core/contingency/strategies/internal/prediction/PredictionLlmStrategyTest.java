@@ -43,8 +43,8 @@ class PredictionLlmStrategyTest {
 
     @Test
     void applicabilityRequiresLlmAccessAndCurrentResource() {
-        Situation located = Situation.stuck("blocked").currentResource(CURRENT).build();
-        Situation unlocated = Situation.stuck("blocked").build();
+        Situation located = Situation.builder().trigger("blocked").currentResource(CURRENT).build();
+        Situation unlocated = Situation.builder().trigger("blocked").build();
         TestContext noAccess = new TestContext();
         TestContext contextAccess = new TestContext();
         contextAccess.llmAccess = true;
@@ -60,7 +60,7 @@ class PredictionLlmStrategyTest {
 
     @Test
     void evaluationReportsMissingClientOrParser() {
-        Situation situation = Situation.stuck("blocked").currentResource(CURRENT).build();
+        Situation situation = Situation.builder().trigger("blocked").currentResource(CURRENT).build();
         RecordingPromptBuilder prompts = new RecordingPromptBuilder();
 
         assertNoHelp(new PredictionLlmStrategy(null).evaluate(situation, new TestContext()),
@@ -84,7 +84,7 @@ class PredictionLlmStrategyTest {
 
         StrategyResult.Suggestion suggestion = new PredictionLlmStrategy(
             client, prompts, raw -> parsed).evaluate(
-                Situation.failure("failed").currentResource(CURRENT).build(), new TestContext())
+                Situation.builder().trigger("failed").currentResource(CURRENT).build(), new TestContext())
             .asSuggestion();
 
         assertEquals(PredictionLlmStrategy.ID, suggestion.getStrategyId());
@@ -109,7 +109,7 @@ class PredictionLlmStrategyTest {
         LlmActionResponse parsed = LlmActionResponse.valid("wait", null, "Allow recovery");
 
         StrategyResult.Suggestion suggestion = strategyReturning(parsed, options)
-            .evaluate(Situation.stuck("blocked").currentResource(CURRENT).build(), new TestContext())
+            .evaluate(Situation.builder().trigger("blocked").currentResource(CURRENT).build(), new TestContext())
             .asSuggestion();
 
         assertEquals(0.37, suggestion.getConfidence(), 0.000_001);
@@ -117,7 +117,7 @@ class PredictionLlmStrategyTest {
 
     @Test
     void invalidAndExplicitNoSuggestionResponsesMapToNoHelp() {
-        Situation situation = Situation.stuck("blocked").currentResource(CURRENT).build();
+        Situation situation = Situation.builder().trigger("blocked").currentResource(CURRENT).build();
 
         assertNoHelp(strategyReturning(LlmActionResponse.invalid("missing action"), null)
                 .evaluate(situation, new TestContext()),
@@ -134,7 +134,7 @@ class PredictionLlmStrategyTest {
 
     @Test
     void componentExceptionsBecomeEvaluationFailures() {
-        Situation situation = Situation.stuck("blocked").currentResource(CURRENT).build();
+        Situation situation = Situation.builder().trigger("blocked").currentResource(CURRENT).build();
         PredictionLlmStrategy clientFailure = new PredictionLlmStrategy(
             prompt -> { throw new Exception("model offline"); },
             context -> "prompt",
@@ -162,7 +162,7 @@ class PredictionLlmStrategyTest {
                 new RdfTriple(CURRENT, visible, TARGET),
                 new RdfTriple(CURRENT, filtered, "red"))),
             interaction(List.of(new RdfTriple(CURRENT, visible, "older"))));
-        context.traces = List.of(CcrsTrace.builder(Situation.failure("old").build()).build());
+        context.traces = List.of(CcrsTrace.builder(Situation.builder().trigger("old").build()).build());
         context.neighborhood = new CcrsContext.Neighborhood(CURRENT,
             List.of(new RdfTriple(CURRENT, visible, TARGET), new RdfTriple(CURRENT, filtered, "blue")),
             List.of(new RdfTriple("incoming", visible, CURRENT)));
@@ -175,7 +175,7 @@ class PredictionLlmStrategyTest {
             prompt -> "raw", prompts,
             raw -> LlmActionResponse.valid("navigate", TARGET, "go"), options);
 
-        strategy.evaluate(Situation.failure("failed").failedAction("GET")
+        strategy.evaluate(Situation.builder().trigger("failed").failedAction("GET")
             .targetResource(TARGET).httpError(503, "Unavailable").build(), context);
 
         assertEquals(1, context.requestedInteractionLimit);
@@ -189,7 +189,10 @@ class PredictionLlmStrategyTest {
         assertFalse(recent.contains(filtered));
         assertTrue(neighborhood.contains(visible));
         assertFalse(neighborhood.contains(filtered));
-        assertTrue(((String) prompts.context.get("situationDetails")).contains("Requested or failed action: GET"));
+        String situationDetails = (String) prompts.context.get("situationDetails");
+        assertTrue(situationDetails.contains("Trigger: failed"));
+        assertTrue(situationDetails.contains("Requested or failed action: GET"));
+        assertFalse(situationDetails.contains("Situation type"));
     }
 
     @Test
@@ -197,7 +200,7 @@ class PredictionLlmStrategyTest {
         String explanation = "x".repeat(250);
         StrategyResult.Suggestion suggestion = strategyReturning(
             LlmActionResponse.valid("wait", null, explanation), null)
-            .evaluate(Situation.stuck("blocked").currentResource(CURRENT).build(), new TestContext())
+            .evaluate(Situation.builder().trigger("blocked").currentResource(CURRENT).build(), new TestContext())
             .asSuggestion();
 
         assertTrue(suggestion.getRationale().endsWith("..."));
@@ -207,7 +210,7 @@ class PredictionLlmStrategyTest {
     @Test
     void configuredPlainTextFallbackControlsDefaultParser() {
         String plainResponse = "Navigate to https://example.test/cells/9 to recover.";
-        Situation situation = Situation.stuck("blocked").currentResource(CURRENT).build();
+        Situation situation = Situation.builder().trigger("blocked").currentResource(CURRENT).build();
 
         StrategyResult enabled = new PredictionLlmStrategy(
             prompt -> plainResponse,
@@ -244,7 +247,7 @@ class PredictionLlmStrategyTest {
         assertEquals(List.of("x"), options.getFilteredTripleNamespaces());
 
         assertApplicable(new PredictionLlmStrategy(prompt -> "{}", null),
-            Situation.stuck("blocked").currentResource(CURRENT).build(), new TestContext());
+            Situation.builder().trigger("blocked").currentResource(CURRENT).build(), new TestContext());
     }
 
     private static PredictionLlmStrategy strategyReturning(

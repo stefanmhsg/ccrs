@@ -43,7 +43,7 @@ class ConsultationStrategyTest {
 
     @Test
     void applicabilityRequiresAvailableChannelHistoryAndDiscoveredPeer() {
-        Situation situation = Situation.stuck("blocked").currentResource(CURRENT).build();
+        Situation situation = Situation.builder().trigger("blocked").currentResource(CURRENT).build();
         TestContext usable = contextWithPeer();
 
         assertNotApplicable(new ConsultationStrategy(), situation, usable);
@@ -57,7 +57,7 @@ class ConsultationStrategyTest {
 
     @Test
     void evaluateReportsMissingOrUnavailableChannel() {
-        Situation situation = Situation.stuck("blocked").build();
+        Situation situation = Situation.builder().trigger("blocked").build();
 
         assertNoHelp(new ConsultationStrategy().evaluate(situation, contextWithPeer()),
             StrategyResult.NoHelpReason.PRECONDITION_MISSING, "No consultation channel configured");
@@ -67,7 +67,7 @@ class ConsultationStrategyTest {
 
     @Test
     void mapsChannelFailureMissingActionAndExceptionToNoHelp() {
-        Situation situation = Situation.stuck("blocked").build();
+        Situation situation = Situation.builder().trigger("blocked").build();
         RecordingChannel failed = new RecordingChannel(true);
         failed.response = ConsultationResponse.failure("no expert available");
         RecordingChannel empty = new RecordingChannel(true);
@@ -92,7 +92,7 @@ class ConsultationStrategyTest {
         channel.response.metadata = Map.of("requestId", "abc");
 
         StrategyResult.Suggestion suggestion = new ConsultationStrategy(channel)
-            .evaluate(Situation.stuck("blocked").currentResource(CURRENT).build(), contextWithPeer())
+            .evaluate(Situation.builder().trigger("blocked").currentResource(CURRENT).build(), contextWithPeer())
             .asSuggestion();
 
         assertEquals(ConsultationStrategy.ID, suggestion.getStrategyId());
@@ -114,12 +114,12 @@ class ConsultationStrategyTest {
         channel.response = ConsultationResponse.success("wait", null, "Wait briefly");
 
         assertEquals(0.42, new ConsultationStrategy(channel, options)
-            .evaluate(Situation.stuck("blocked").build(), contextWithPeer())
+            .evaluate(Situation.builder().trigger("blocked").build(), contextWithPeer())
             .asSuggestion().getConfidence(), 0.000_001);
 
         channel.response.confidence = 1.5;
         assertEquals(0.42, new ConsultationStrategy(channel, options)
-            .evaluate(Situation.stuck("blocked").build(), contextWithPeer())
+            .evaluate(Situation.builder().trigger("blocked").build(), contextWithPeer())
             .asSuggestion().getConfidence(), 0.000_001);
     }
 
@@ -141,7 +141,7 @@ class ConsultationStrategyTest {
         ConsultationStrategy strategy = new ConsultationStrategy(channel, ConsultationStrategyOptions.builder()
             .maxRecentInteractions(1).maxAgentCandidates(1).maxCcrsTraces(1).build());
 
-        strategy.evaluate(Situation.failure("request failed")
+        strategy.evaluate(Situation.builder().trigger("request failed")
             .currentResource(CURRENT).failedAction("GET")
             .targetResource("https://example.test/failing").httpError(503, "Unavailable").build(), context);
 
@@ -151,6 +151,12 @@ class ConsultationStrategyTest {
         assertEquals(1, context.requestedTraceLimit);
         assertEquals(1, ((List<?>) channel.context.get("recentActions")).size());
         assertEquals(1, ((List<?>) channel.context.get("consultationTargets")).size());
+        assertEquals("request failed", channel.context.get("trigger"));
+        assertFalse(channel.context.containsKey("situationType"));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> previous =
+            (List<Map<String, Object>>) channel.context.get("previousCcrsInvocations");
+        assertEquals("old", previous.get(0).get("trigger"));
         assertEquals(PEER, channel.context.get("agentUri"));
         assertEquals("https://example.test/cards/helper.json", channel.context.get("agentCardUri"));
     }
@@ -165,7 +171,7 @@ class ConsultationStrategyTest {
             "rawResponse", "<https://source.test/item> <https://example.test/value> \"quoted value\" .");
 
         StrategyResult.Suggestion suggestion = new ConsultationStrategy(channel)
-            .evaluate(Situation.stuck("blocked").currentResource(CURRENT).build(), contextWithPeer())
+            .evaluate(Situation.builder().trigger("blocked").currentResource(CURRENT).build(), contextWithPeer())
             .asSuggestion();
 
         assertEquals("post", suggestion.getActionType());
@@ -185,7 +191,7 @@ class ConsultationStrategyTest {
         channel.response.metadata = Map.of("artifactContentType", "text/turtle", "rawResponse", "not turtle");
 
         StrategyResult.Suggestion suggestion = new ConsultationStrategy(channel)
-            .evaluate(Situation.stuck("blocked").currentResource(CURRENT).build(), contextWithPeer())
+            .evaluate(Situation.builder().trigger("blocked").currentResource(CURRENT).build(), contextWithPeer())
             .asSuggestion();
 
         assertEquals("inspect", suggestion.getActionType());
@@ -202,7 +208,7 @@ class ConsultationStrategyTest {
         assertEquals(0, options.getMaxCcrsTraces());
         assertEquals(1.0, options.getDefaultConfidence(), 0.0);
         assertApplicable(new ConsultationStrategy(new RecordingChannel(true), null),
-            Situation.stuck("blocked").build(), contextWithPeer());
+            Situation.builder().trigger("blocked").build(), contextWithPeer());
     }
 
     private static TestContext contextWithPeer() {
@@ -217,7 +223,7 @@ class ConsultationStrategyTest {
     }
 
     private static CcrsTrace trace() {
-        return CcrsTrace.builder(Situation.failure("old").build()).build();
+        return CcrsTrace.builder(Situation.builder().trigger("old").build()).build();
     }
 
     private static void assertApplicable(ConsultationStrategy strategy, Situation situation, CcrsContext context) {

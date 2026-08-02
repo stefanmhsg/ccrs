@@ -119,19 +119,13 @@ public class BacktrackStrategy implements CcrsStrategy {
     
     /**
      * Check if strategy applies to the given situation and context.
-     * Is applicable for STUCK or FAILURE situations with available checkpoints.
+     * Is applicable when the current resource and interaction history are available.
      * @param situation The current situation
      * @param context The current context
      * @return Applicability status
      */
     @Override
     public Applicability appliesTo(Situation situation, CcrsContext context) {
-        if (situation.getType() != Situation.Type.STUCK && 
-            situation.getType() != Situation.Type.FAILURE) {
-                logger.info("[Backtrack] Situation type not applicable: " + situation.getType());
-                return Applicability.NOT_APPLICABLE;
-        }
-        
         String currentResource = situation.getCurrentResource();
         if (currentResource == null) {
             currentResource = context.getCurrentResource().orElse(null);
@@ -225,7 +219,7 @@ public class BacktrackStrategy implements CcrsStrategy {
     
     @Override
     public StrategyResult evaluate(Situation situation, CcrsContext context) {
-        logger.info("[Backtrack] Evaluating backtrack strategy for situation: " + situation.getType());
+        logger.info("[Backtrack] Evaluating backtrack strategy for request: " + situation);
         
         String currentResource = situation.getCurrentResource();
         if (currentResource == null) {

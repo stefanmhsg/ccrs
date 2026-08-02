@@ -1,24 +1,27 @@
 // =========================================================================
 // Contingency CCRS evaluate() - Quick Reference Examples
 // =========================================================================
-// This file shows AgentSpeak usage patterns for all evaluate() signatures.
+// This file shows the type-free map-based evaluate() signature.
 // See contingency/README.md for detailed documentation.
 // =========================================================================
 
 // -------------------------------------------------------------------------
-// EXAMPLE 1: Basic Stuck (4 args) - Most Common Pattern
+// EXAMPLE 1: Navigation Impasse
 // -------------------------------------------------------------------------
 // When: Agent stuck at a location, needs backtrack guidance
 // Strategy: BacktrackStrategy (L2) finds checkpoints
 
-+!escalate("stuck", "no_valid_options", Location) : true <-
-    .print("[STUCK] No valid options at ", Location);
-    ccrs.jacamo.jason.contingency.evaluate("stuck", "no_valid_options", Location, Suggestions);
++!escalate("no_valid_options", Location) : true <-
+    .print("[GUIDANCE] No valid options at ", Location);
+    ccrs.jacamo.jason.contingency.evaluate(
+        map(trigger("no_valid_options"), current(Location)),
+        Suggestions
+    );
     !handle_suggestions(Suggestions);
 .
 
 // -------------------------------------------------------------------------
-// EXAMPLE 2: HTTP Failure (7 args) - Full Error Context
+// EXAMPLE 2: HTTP Failure Evidence
 // -------------------------------------------------------------------------
 // When: HTTP request fails, needs retry/recovery
 // Strategy: RetryStrategy (L1) for transient errors, BacktrackStrategy (L2) fallback
@@ -30,13 +33,15 @@
     <-
     .print("[HTTP 404] Target not found: ", TargetURI);
     ccrs.jacamo.jason.contingency.evaluate(
-        "failure",           // Type: FAILURE (not STUCK)
-        "http_error",        // Trigger description
-        CurrentURI,          // Current location
-        TargetURI,           // Where request failed
-        "GET",               // Failed HTTP method
-        "404",               // Error code
-        Suggestions          // Output: strategy suggestions
+        map(
+            trigger("http_error"),
+            current(CurrentURI),
+            target(TargetURI),
+            action("GET"),
+            http_status("404"),
+            error_message("Not Found")
+        ),
+        Suggestions
     );
     !handle_http_error_suggestions(Suggestions, TargetURI);
 .
@@ -48,15 +53,17 @@
     <-
     .print("[HTTP 503] Service unavailable: ", TargetURI);
     ccrs.jacamo.jason.contingency.evaluate(
-        "failure", "http_error",
-        CurrentURI, TargetURI, "GET", "503",
+        map(
+            trigger("http_error"), current(CurrentURI), target(TargetURI),
+            action("GET"), http_status("503"), error_message("Service Unavailable")
+        ),
         Suggestions
     );
     !handle_http_error_suggestions(Suggestions, TargetURI);
 .
 
 // -------------------------------------------------------------------------
-// EXAMPLE 3: Map-Based (4 args) - Flexible Composition
+// EXAMPLE 3: Flexible Evidence Composition
 // -------------------------------------------------------------------------
 // When: Custom field combinations
 // Strategy: Any (fields determine applicability)
@@ -64,11 +71,9 @@
 +!retry_with_context(CurrentURI, TargetURI, AttemptCount) : true <-
     .print("[RETRY] Attempt ", AttemptCount, " failed, requesting guidance");
     
-    // Use map for flexible field composition
     ccrs.jacamo.jason.contingency.evaluate(
-        "failure",
-        "http_error",
         map(
+            trigger("http_error"),
             current(CurrentURI),
             target(TargetURI),
             action("GET"),
@@ -80,14 +85,17 @@
 .
 
 // -------------------------------------------------------------------------
-// EXAMPLE 4: Minimal (3 args) - Last Resort
+// EXAMPLE 4: Minimal Runtime-Guidance Request
 // -------------------------------------------------------------------------
 // When: Minimal context available, just need general advice
-// Strategy: StopStrategy (L0) only
+// Strategies decide applicability from the run history and available evidence
 
 +!give_up : true <-
     .print("[GIVING UP] Requesting stop guidance");
-    ccrs.jacamo.jason.contingency.evaluate("stuck", "exhausted_options", Suggestions);
+    ccrs.jacamo.jason.contingency.evaluate(
+        map(trigger("exhausted_options")),
+        Suggestions
+    );
     !handle_suggestions(Suggestions);
 .
 
@@ -224,7 +232,10 @@
     if (Progress < 2) {
         .print("[MONITOR] Low progress: ", Progress, " new nodes");
         ?at(Location);
-        ccrs.jacamo.jason.contingency.evaluate("stuck", "low_progress", Location, Suggestions);
+        ccrs.jacamo.jason.contingency.evaluate(
+            map(trigger("low_progress"), current(Location)),
+            Suggestions
+        );
         !handle_suggestions(Suggestions);
     } else {
         .print("[MONITOR] Progress OK: ", Progress, " new nodes");

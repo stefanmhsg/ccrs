@@ -64,12 +64,6 @@ public class RetryStrategy implements CcrsStrategy {
     
     @Override
     public Applicability appliesTo(Situation situation, CcrsContext context) {
-        // Must be a failure situation
-        if (situation.getType() != Situation.Type.FAILURE) {
-            logger.info("[Retry] Not applicable - situation type is " + situation.getType());
-            return Applicability.NOT_APPLICABLE;
-        }
-        
         // Must have a failed action to retry
         if (situation.getFailedAction() == null || situation.getTargetResource() == null) {
             logger.info("[Retry] Not applicable - missing failed action or target resource");
@@ -105,7 +99,7 @@ public class RetryStrategy implements CcrsStrategy {
     
     @Override
     public StrategyResult evaluate(Situation situation, CcrsContext context) {
-        logger.info("[Retry] Evaluating retry strategy for situation: " + situation.getType());
+        logger.info("[Retry] Evaluating retry strategy for request: " + situation);
         
         int attemptCount = countRecentRetryAttempts(situation, context);
         
@@ -157,10 +151,6 @@ public class RetryStrategy implements CcrsStrategy {
     
     private boolean situationMatchesForRetry(Situation prior, Situation current) {
         if (prior == null || current == null) {
-            return false;
-        }
-        
-        if (prior.getType() != current.getType()) {
             return false;
         }
         

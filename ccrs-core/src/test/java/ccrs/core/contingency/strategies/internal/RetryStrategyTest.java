@@ -50,7 +50,7 @@ class RetryStrategyTest {
             assertApplicable(strategy, failureWithErrorType(errorType), null);
         }
 
-        Situation retriableByEitherField = Situation.failure("request failed")
+        Situation retriableByEitherField = Situation.builder().trigger("request failed")
             .failedAction(ACTION)
             .targetResource(TARGET)
             .httpError(404, "Gateway timed out")
@@ -60,24 +60,24 @@ class RetryStrategyTest {
     }
 
     @Test
-    void rejectsNonFailuresMissingRetryIdentityAndPermanentErrors() {
+    void applicabilityUsesRetryEvidenceWithoutCallerClassification() {
         RetryStrategy strategy = new RetryStrategy();
-        Situation stuck = Situation.stuck("blocked")
+        Situation unclassifiedRetriableRequest = Situation.builder().trigger("blocked")
             .failedAction(ACTION)
             .targetResource(TARGET)
             .errorInfo("errorType", "timeout")
             .build();
-        Situation missingAction = Situation.failure("failed")
+        Situation missingAction = Situation.builder().trigger("failed")
             .targetResource(TARGET)
             .errorInfo("errorType", "timeout")
             .build();
-        Situation missingTarget = Situation.failure("failed")
+        Situation missingTarget = Situation.builder().trigger("failed")
             .failedAction(ACTION)
             .errorInfo("errorType", "timeout")
             .build();
         Situation permanentFailure = failureWithHttpStatus(404, "Not found");
 
-        assertNotApplicable(strategy, stuck, null);
+        assertApplicable(strategy, unclassifiedRetriableRequest, null);
         assertNotApplicable(strategy, missingAction, null);
         assertNotApplicable(strategy, missingTarget, null);
         assertNotApplicable(strategy, permanentFailure, null);
@@ -153,13 +153,13 @@ class RetryStrategyTest {
     }
 
     @Test
-    void countsOnlyEvaluatedRetriesForTheSameFailureActionAndTarget() {
+    void countsOnlyEvaluatedRetriesForTheSameActionAndTarget() {
         Situation current = failureWithErrorType("timeout");
         List<CcrsTrace> history = new ArrayList<>();
         history.add(evaluatedRetry(current));
         history.add(evaluatedRetry(failure(ACTION, "https://example.test/orders/99", "timeout")));
         history.add(evaluatedRetry(failure("POST", TARGET, "timeout")));
-        history.add(evaluatedRetry(Situation.stuck("blocked")
+        history.add(evaluatedRetry(Situation.builder().trigger("a different observation")
             .failedAction(ACTION)
             .targetResource(TARGET)
             .errorInfo("errorType", "timeout")
@@ -171,9 +171,9 @@ class RetryStrategyTest {
             .evaluate(current, new TestContext(history))
             .asSuggestion();
 
-        assertEquals(2, suggestion.<Integer>getActionParam("attemptNumber"));
-        assertEquals(2000L, suggestion.<Long>getActionParam("delayMs"));
-        assertEquals(0.56, suggestion.getConfidence(), 0.000_001);
+        assertEquals(3, suggestion.<Integer>getActionParam("attemptNumber"));
+        assertEquals(4000L, suggestion.<Long>getActionParam("delayMs"));
+        assertEquals(0.448, suggestion.getConfidence(), 0.000_001);
     }
 
     @Test
@@ -260,7 +260,7 @@ class RetryStrategyTest {
     }
 
     private static Situation failureWithHttpStatus(int status, String message) {
-        return Situation.failure("request failed")
+        return Situation.builder().trigger("request failed")
             .failedAction(ACTION)
             .targetResource(TARGET)
             .httpError(status, message)
@@ -272,7 +272,7 @@ class RetryStrategyTest {
     }
 
     private static Situation failure(String action, String target, String errorType) {
-        return Situation.failure("request failed")
+        return Situation.builder().trigger("request failed")
             .failedAction(action)
             .targetResource(target)
             .errorInfo("errorType", errorType)

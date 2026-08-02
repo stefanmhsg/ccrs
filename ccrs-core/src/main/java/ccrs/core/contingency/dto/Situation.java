@@ -3,33 +3,17 @@ package ccrs.core.contingency.dto;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * Describes a situation requiring contingency handling.
  * This is the primary input to contingency CCRS strategies.
  * 
- * Situations can represent failures, stuck states, uncertainty,
- * or proactive checks before taking risky actions.
+ * Callers describe the observations that motivated runtime guidance. Concrete
+ * strategies decide applicability from the available evidence and context.
  */
 public class Situation {
-    
-    /**
-     * Type of situation being handled.
-     */
-    public enum Type {
-        /** An action failed with an error */
-        FAILURE,
-        /** Agent is stuck with no clear path forward */
-        STUCK,
-        /** Agent faces uncertainty about what to do */
-        UNCERTAINTY,
-        /** Proactive check before taking an action */
-        PROACTIVE
-    }
-    
-    // What kind of situation
-    private final Type type;
+
+    // What prompted the runtime-guidance request
     private final String trigger;
     
     // Location context
@@ -44,7 +28,6 @@ public class Situation {
     private final Map<String, Object> metadata;
     
     private Situation(Builder builder) {
-        this.type = Objects.requireNonNull(builder.type, "Situation type is required");
         this.trigger = builder.trigger;
         this.currentResource = builder.currentResource;
         this.targetResource = builder.targetResource;
@@ -54,10 +37,6 @@ public class Situation {
     }
     
     // Getters
-    
-    public Type getType() {
-        return type;
-    }
     
     public String getTrigger() {
         return trigger;
@@ -99,32 +78,42 @@ public class Situation {
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder();
-        sb.append("Situation{type=").append(type);
-        if (trigger != null) sb.append(", trigger='").append(trigger).append("'");
-        if (currentResource != null) sb.append(", current='").append(currentResource).append("'");
-        if (targetResource != null) sb.append(", target='").append(targetResource).append("'");
-        if (failedAction != null) sb.append(", action='").append(failedAction).append("'");
-        if (!errorInfo.isEmpty()) sb.append(", error=").append(errorInfo);
+        sb.append("Situation{");
+        boolean hasField = false;
+        if (trigger != null) {
+            sb.append("trigger='").append(trigger).append("'");
+            hasField = true;
+        }
+        if (currentResource != null) {
+            if (hasField) sb.append(", ");
+            sb.append("current='").append(currentResource).append("'");
+            hasField = true;
+        }
+        if (targetResource != null) {
+            if (hasField) sb.append(", ");
+            sb.append("target='").append(targetResource).append("'");
+            hasField = true;
+        }
+        if (failedAction != null) {
+            if (hasField) sb.append(", ");
+            sb.append("action='").append(failedAction).append("'");
+            hasField = true;
+        }
+        if (!errorInfo.isEmpty()) {
+            if (hasField) sb.append(", ");
+            sb.append("error=").append(errorInfo);
+        }
         sb.append("}");
         return sb.toString();
     }
     
     // Builder
     
-    public static Builder builder(Type type) {
-        return new Builder(type);
-    }
-    
-    public static Builder failure(String trigger) {
-        return new Builder(Type.FAILURE).trigger(trigger);
-    }
-    
-    public static Builder stuck(String trigger) {
-        return new Builder(Type.STUCK).trigger(trigger);
+    public static Builder builder() {
+        return new Builder();
     }
     
     public static class Builder {
-        private final Type type;
         private String trigger;
         private String currentResource;
         private String targetResource;
@@ -132,8 +121,7 @@ public class Situation {
         private Map<String, Object> errorInfo = new HashMap<>();
         private Map<String, Object> metadata = new HashMap<>();
         
-        private Builder(Type type) {
-            this.type = type;
+        private Builder() {
         }
         
         public Builder trigger(String trigger) {

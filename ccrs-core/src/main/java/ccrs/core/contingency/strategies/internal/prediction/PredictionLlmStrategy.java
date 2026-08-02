@@ -21,7 +21,7 @@ import ccrs.core.rdf.RdfTriple;
 
 /**
  * L4: Prediction Strategy (LLM-based)
- * Applies to: ANY situation type.
+ * Applies to any request carrying enough evidence to construct a useful prompt.
  * 
  * Uses a Large Language Model to predict a recovery action from four
  * deliberately separate context sources:
@@ -266,7 +266,6 @@ public class PredictionLlmStrategy implements CcrsStrategy {
     private String formatSituationDetails(Situation situation, CcrsContext context, String currentResource) {
         StringBuilder sb = new StringBuilder();
 
-        appendLine(sb, "Situation type", situation.getType());
         appendLine(sb, "Trigger", situation.getTrigger());
         appendLine(sb, "Agent", context.getAgentId());
         appendLine(sb, "Current resource", currentResource);

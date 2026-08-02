@@ -29,27 +29,16 @@ import java.util.logging.Logger;
 /**
  * Internal action bridging AgentSpeak and Contingency-CCRS.
  *
- * Supports multiple signatures for different situation complexity:
+ * <p>The public signature is:</p>
  *
- * 1. Basic (3 args): evaluate(Type, Trigger, Result)
- *    - Minimal context for simple situations
+ * <pre>
+ * evaluate(map(trigger(...), current(...), target(...), action(...), ...), Result)
+ * </pre>
  *
- * 2. With focus (4 args): evaluate(Type, Trigger, Focus, Result)
- *    - Adds current location tracking
- *
- * 3. Failure details (7 args): evaluate(Type, Trigger, Current, Target, Action, Error, Result)
- *    - Full context for FAILURE situations (RetryStrategy needs this)
- *
- * 4. Map-based (4 args): evaluate(Type, Trigger, ContextMap, Result)
- *    - Flexible field composition using map(key1(val1), key2(val2), ...)
- *    - Supported keys: current, target, action, error
- *
- * Type: "failure", "stuck", "uncertainty", "proactive"
- * Trigger: Reason/description string
- * Focus/Current: Current resource URI
- * Target: Target resource URI (for failures)
- * Action: Failed action name (for failures)
- * Error: Error code/message (for failures)
+ * <p>Supported keys are {@code trigger}, {@code current}, {@code target},
+ * {@code action}, {@code error}, {@code http_status}, {@code error_type},
+ * {@code error_message}, and {@code metadata(Key, Value)}. Callers describe
+ * observations; Java strategies decide applicability from those facts.</p>
  * See contingency/README.md for usage examples.
  */
 public class evaluate extends DefaultInternalAction {
@@ -61,9 +50,9 @@ public class evaluate extends DefaultInternalAction {
     @Override
     public Object execute(TransitionSystem ts, Unifier un, Term[] args) throws Exception {
 
-        if (args.length < 3) {
+        if (args.length != 2) {
             throw new JasonException(
-                "ccrs.contingency.evaluate requires at least 3 args: (Type, Trigger, ..., Result)"
+                "ccrs.contingency.evaluate requires 2 args: (ContextMap, Result)"
             );
         }
 
@@ -86,7 +75,7 @@ public class evaluate extends DefaultInternalAction {
             logger.fine("[ContingencyCcrs] JasonCcrsContext details: " + jCtx.toDebugString());
         }
 
-        Situation situation = parseSituation(args);
+        Situation situation = parseSituation(args[0]);
         
         // Track current resource in context when available
         String currentResource = situation.getCurrentResource();
@@ -99,10 +88,13 @@ public class evaluate extends DefaultInternalAction {
         logger.info("[ContingencyCcrs] Evaluating situation: " + situation + " with context");
         CcrsEventLogger.info(logger, "ccrs.contingency.evaluate.request", CcrsEventLogger.fields(
             "agent_id", context.getAgentId(),
-            "situation_type", situation.getType(),
+            "trigger", situation.getTrigger(),
             "current_resource", situation.getCurrentResource(),
             "target_resource", situation.getTargetResource(),
             "failed_action", situation.getFailedAction(),
+            "http_status", situation.getErrorInfoString("httpStatus"),
+            "error_type", situation.getErrorInfoString("errorType"),
+            "error_message", situation.getErrorInfoString("message"),
             "has_history", context.hasHistory()
         ));
 
@@ -158,60 +150,16 @@ public class evaluate extends DefaultInternalAction {
     // Situation parsing
     // ------------------------------------------------------------------
 
-    private Situation parseSituation(Term[] args) throws JasonException {
-        Situation.Type type = parseType(args[0]);
-        String trigger = JasonRdfAdapter.termToString(args[1]);
-        Situation.Builder builder = Situation.builder(type).trigger(trigger);
-
-        // Result is always last arg, so content args are [0..length-2]
-        int contentArgs = args.length - 1;
-
-        switch (contentArgs) {
-            case 2: // evaluate(Type, Trigger, Result)
-                // Minimal signature
-                break;
-
-            case 3: // evaluate(Type, Trigger, X, Result)
-                // Could be Focus string OR ContextMap
-                Term arg2 = args[2];
-                if (isMap(arg2)) {
-                    parseMapIntoBuilder(arg2, builder);
-                } else {
-                    // Legacy: treat as Focus/Current
-                    String focus = JasonRdfAdapter.termToString(arg2);
-                    if (!focus.isEmpty()) {
-                        builder.currentResource(focus);
-                    }
-                }
-                break;
-
-            case 6: // evaluate(Type, Trigger, Current, Target, Action, Error, Result)
-                // Full FAILURE signature
-                builder.currentResource(parseOptionalString(args[2]));
-                builder.targetResource(parseOptionalString(args[3]));
-                builder.failedAction(parseOptionalString(args[4]));
-                parseErrorInfo(args[5], builder);
-                break;
-
-            default:
-                throw new JasonException(
-                    "Unsupported argument count: " + args.length + 
-                    ". Expected 3, 4, or 7 args (Type, Trigger, ..., Result)"
-                );
+    Situation parseSituation(Term contextMap) throws JasonException {
+        if (!isMap(contextMap)) {
+            throw new JasonException(
+                "First argument must be map(trigger(...), current(...), ...)"
+            );
         }
 
+        Situation.Builder builder = Situation.builder();
+        parseMapIntoBuilder(contextMap, builder);
         return builder.build();
-    }
-
-    private Situation.Type parseType(Term t) throws JasonException {
-        String s = JasonRdfAdapter.termToString(t).toLowerCase();
-        return switch (s) {
-            case "failure" -> Situation.Type.FAILURE;
-            case "stuck" -> Situation.Type.STUCK;
-            case "uncertainty" -> Situation.Type.UNCERTAINTY;
-            case "proactive" -> Situation.Type.PROACTIVE;
-            default -> throw new JasonException("Unknown situation type: " + s);
-        };
     }
 
     private boolean isMap(Term t) {
@@ -219,32 +167,53 @@ public class evaluate extends DefaultInternalAction {
         return t.isStructure() && ((Structure) t).getFunctor().equals("map");
     }
 
-    private String parseOptionalString(Term t) {
-        if (t == null) return null;
-        String s = JasonRdfAdapter.termToString(t);
-        return (s.isEmpty() || s.equals("null")) ? null : s;
-    }
-
     private void parseMapIntoBuilder(Term mapTerm, Situation.Builder builder) throws JasonException {
-        if (!mapTerm.isStructure()) return;
+        if (!mapTerm.isStructure()) {
+            throw new JasonException("Context map must be a map(...) structure");
+        }
         Structure map = (Structure) mapTerm;
         
         for (Term entry : map.getTerms()) {
-            if (!entry.isStructure()) continue;
+            if (!entry.isStructure()) {
+                throw new JasonException("Context map entries must be key(value) structures: " + entry);
+            }
             Structure kv = (Structure) entry;
             String key = kv.getFunctor();
-            String value = kv.getArity() > 0 ? JasonRdfAdapter.termToString(kv.getTerm(0)) : null;
             
             switch (key) {
-                case "current" -> builder.currentResource(value);
-                case "target" -> builder.targetResource(value);
-                case "action" -> builder.failedAction(value);
+                case "trigger" -> builder.trigger(singleValue(kv));
+                case "current" -> builder.currentResource(singleValue(kv));
+                case "target" -> builder.targetResource(singleValue(kv));
+                case "action" -> builder.failedAction(singleValue(kv));
                 case "error" -> {
-                    if (value != null && !value.isEmpty()) {
-                        builder.errorInfo("message", value);
-                    }
+                    requireArity(kv, 1);
+                    parseErrorInfo(kv.getTerm(0), builder);
                 }
+                case "http_status" -> builder.errorInfo("httpStatus", singleValue(kv));
+                case "error_type" -> builder.errorInfo("errorType", singleValue(kv));
+                case "error_message" -> builder.errorInfo("message", singleValue(kv));
+                case "metadata" -> {
+                    requireArity(kv, 2);
+                    builder.metadata(
+                        JasonRdfAdapter.termToString(kv.getTerm(0)),
+                        JasonRdfAdapter.termToString(kv.getTerm(1)));
                 }
+                default -> throw new JasonException("Unsupported contingency context key: " + key);
+                }
+        }
+    }
+
+    private String singleValue(Structure entry) throws JasonException {
+        requireArity(entry, 1);
+        return JasonRdfAdapter.termToString(entry.getTerm(0));
+    }
+
+    private void requireArity(Structure entry, int expectedArity) throws JasonException {
+        if (entry.getArity() != expectedArity) {
+            throw new JasonException(
+                entry.getFunctor() + " requires exactly " + expectedArity
+                    + (expectedArity == 1 ? " value" : " values") + ": " + entry
+            );
         }
     }
 

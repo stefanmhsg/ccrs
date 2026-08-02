@@ -4,6 +4,13 @@ This ExecPlan is a living document. The sections `Rules`, `Progress`, `Surprises
 
 This repository does not currently have a checked-in `PLANS.md` guide. This plan follows the local `PLAN_<SCOPE>.md` convention described in [../AGENTS.md](../AGENTS.md) and is scoped to the reusable `ccrs-core` package plus the adapters that must continue to consume it.
 
+> Supersession note (2026-08-02): this completed plan's historical Stop
+> exhaustion options were replaced by the degradation thresholds and
+> one-invocation learned-selection bypass specified in
+> [PLAN_CONTINGENCY_SITUATION_MODEL.md](PLAN_CONTINGENCY_SITUATION_MODEL.md).
+> Its old commands and decisions remain as implementation history, not current
+> API guidance.
+
 ## Purpose / Big Picture
 
 Agent designers who consume the CCRS libraries from Maven need one predictable way to configure contingency strategy behavior. After this migration, a Java application, the JaCaMo adapter, and the React JPype adapter should all be able to construct contingency CCRS with the same central `ContingencyConfiguration` object and have strategy-specific values such as prediction prompt history limits, retry thresholds, consultation context limits, and stop exhaustion limits flow into the strategies that use them.

@@ -214,7 +214,7 @@ public class ContingencyCcrs {
                             strategy.getId(), result.asSuggestion().getConfidence()));
                         if (config.getEscalationPolicy() == ContingencyConfiguration.EscalationPolicy.SEQUENTIAL) {
                             long evalTime = System.currentTimeMillis() - evalStart;
-                            if (config.isTraceEnabled()) {
+                            if (shouldRecordEvaluation(strategy, result)) {
                                 traceBuilder.addEvaluation(
                                     strategy.getId(),
                                     level,
@@ -241,7 +241,7 @@ public class ContingencyCcrs {
             
             long evalTime = System.currentTimeMillis() - evalStart;
             
-            if (config.isTraceEnabled()) {
+            if (shouldRecordEvaluation(strategy, result)) {
                 traceBuilder.addEvaluation(
                     strategy.getId(),
                     level,
@@ -327,6 +327,12 @@ public class ContingencyCcrs {
             Situation situation,
             CcrsContext context,
             List<CcrsStrategy> defaultOrder) {
+        if (isLearnedSelectionBypassRequested(context)) {
+            logger.info(
+                "[StrategySelectionPolicy] Stop requested one-shot reconsideration; using default order and no learned gates for this invocation");
+            return null;
+        }
+
         if (!config.isLearnedSelectionEnabled()) {
             logger.info("[StrategySelectionPolicy] Strategy selection policy disabled; using default escalation order");
             return null;
@@ -366,6 +372,29 @@ public class ContingencyCcrs {
                 e.getMessage()));
         }
         return plan;
+    }
+
+    private boolean isLearnedSelectionBypassRequested(CcrsContext context) {
+        if (context == null) {
+            return false;
+        }
+        return context.getLastCcrsInvocation()
+            .map(trace -> trace.didStrategyReturnNoHelp(
+                ccrs.core.contingency.strategies.internal.StopStrategy.ID,
+                StrategyResult.NoHelpReason.SELECTION_RECONSIDERATION_REQUESTED))
+            .orElse(false);
+    }
+
+    private boolean shouldRecordEvaluation(CcrsStrategy strategy, StrategyResult result) {
+        if (config.isTraceEnabled()) {
+            return true;
+        }
+        return strategy != null
+            && ccrs.core.contingency.strategies.internal.StopStrategy.ID.equals(strategy.getId())
+            && result != null
+            && !result.isSuggestion()
+            && result.asNoHelp().getReason()
+                == StrategyResult.NoHelpReason.SELECTION_RECONSIDERATION_REQUESTED;
     }
 
     private List<CcrsStrategy> orderStrategies(

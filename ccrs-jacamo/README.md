@@ -99,7 +99,12 @@ CcrsJacamoRuntime.setContingencyConfiguration(
         .retry(options -> options
             .maxAttempts(5)
             .initialDelayMs(500))
-        .stop(options -> options.exhaustionThreshold(1))
+        .stop(options -> options
+            .noSuggestionInvocationThreshold(2)
+            .lowConfidenceInvocationThreshold(3)
+            .lowConfidenceThreshold(0.5)
+            .selectionResetCountBeforeStop(1)
+            .traceHistoryLookbackLimit(30))
         .build()
 );
 ```

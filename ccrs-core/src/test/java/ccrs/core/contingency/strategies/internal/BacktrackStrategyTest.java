@@ -38,39 +38,32 @@ class BacktrackStrategyTest {
     }
 
     @Test
-    void appliesOnlyToFailureOrStuckWithLocationAndHistory() {
+    void applicabilityUsesCurrentResourceAndHistoryWithoutCallerClassification() {
         BacktrackStrategy strategy = new BacktrackStrategy();
         TestContext history = new TestContext(List.of());
-        Situation failure = Situation.failure("failed")
-            .currentResource("https://example.test/current")
-            .build();
-        Situation stuck = Situation.stuck("stuck")
-            .currentResource("https://example.test/current")
-            .build();
-        Situation proactive = Situation.builder(Situation.Type.PROACTIVE)
+        Situation request = Situation.builder()
+            .trigger("unclassified navigation problem")
             .currentResource("https://example.test/current")
             .build();
 
-        assertEquals(CcrsStrategy.Applicability.APPLICABLE, strategy.appliesTo(failure, history));
-        assertEquals(CcrsStrategy.Applicability.APPLICABLE, strategy.appliesTo(stuck, history));
-        assertEquals(CcrsStrategy.Applicability.NOT_APPLICABLE, strategy.appliesTo(proactive, history));
+        assertEquals(CcrsStrategy.Applicability.APPLICABLE, strategy.appliesTo(request, history));
         assertEquals(
             CcrsStrategy.Applicability.NOT_APPLICABLE,
-            strategy.appliesTo(Situation.failure("failed").build(), history));
+            strategy.appliesTo(Situation.builder().trigger("failed").build(), history));
         assertEquals(
             CcrsStrategy.Applicability.NOT_APPLICABLE,
-            strategy.appliesTo(failure, new TestContext(List.of(), null, false)));
+            strategy.appliesTo(request, new TestContext(List.of(), null, false)));
         assertEquals(
             CcrsStrategy.Applicability.APPLICABLE,
             strategy.appliesTo(
-                Situation.failure("failed").build(),
+                Situation.builder().trigger("failed").build(),
                 new TestContext(List.of(), "https://example.test/current", true)));
     }
 
     @Test
     void returnsNoHelpWhenCurrentResourceIsUnknown() {
         StrategyResult result = new BacktrackStrategy().evaluate(
-            Situation.failure("failed").build(),
+            Situation.builder().trigger("failed").build(),
             new TestContext(List.of()));
 
         assertNoHelp(result, StrategyResult.NoHelpReason.INSUFFICIENT_CONTEXT);
@@ -86,7 +79,7 @@ class BacktrackStrategyTest {
             success(checkpoint, 1, blocked, unexplored));
 
         StrategyResult result = new BacktrackStrategy().evaluate(
-            Situation.failure("failed").build(),
+            Situation.builder().trigger("failed").build(),
             new TestContext(history, blocked, true));
 
         assertTrue(result.isSuggestion(), result::toDetailedReport);
@@ -103,7 +96,7 @@ class BacktrackStrategyTest {
             success(checkpoint, 1, blocked));
 
         StrategyResult result = new BacktrackStrategy().evaluate(
-            Situation.failure("failed").currentResource(blocked).build(),
+            Situation.builder().trigger("failed").currentResource(blocked).build(),
             new TestContext(history));
 
         assertNoHelp(result, StrategyResult.NoHelpReason.PRECONDITION_MISSING);
@@ -117,7 +110,7 @@ class BacktrackStrategyTest {
             success(checkpoint, 1, "https://example.test/unexplored"));
 
         StrategyResult result = new BacktrackStrategy().evaluate(
-            Situation.failure("failed").currentResource(blocked).build(),
+            Situation.builder().trigger("failed").currentResource(blocked).build(),
             new TestContext(history));
 
         assertNoHelp(result, StrategyResult.NoHelpReason.PRECONDITION_MISSING);
@@ -139,7 +132,7 @@ class BacktrackStrategyTest {
             success(transit, 2, blocked),
             success(checkpoint, 1, transit, unexplored));
 
-        Situation situation = Situation.failure("blocked")
+        Situation situation = Situation.builder().trigger("blocked")
             .currentResource(blocked)
             .build();
 
@@ -262,7 +255,7 @@ class BacktrackStrategyTest {
             BacktrackStrategyOptions.builder().maxRecentInteractions(1).build());
 
         StrategyResult result = strategy.evaluate(
-            Situation.failure("failed").currentResource(blocked).build(),
+            Situation.builder().trigger("failed").currentResource(blocked).build(),
             context);
 
         assertNoHelp(result, StrategyResult.NoHelpReason.PRECONDITION_MISSING);
@@ -273,7 +266,7 @@ class BacktrackStrategyTest {
             String currentResource,
             List<Interaction> history) {
         StrategyResult result = new BacktrackStrategy().evaluate(
-            Situation.failure("failed").currentResource(currentResource).build(),
+            Situation.builder().trigger("failed").currentResource(currentResource).build(),
             new TestContext(history));
         assertTrue(result.isSuggestion(), result::toDetailedReport);
         return result.asSuggestion();

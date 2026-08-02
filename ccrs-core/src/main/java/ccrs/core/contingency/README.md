@@ -1,178 +1,207 @@
 # Contingency CCRS Implementation Guide
 
-This module implements **Contingency Course Check and Revision Strategies (CCRS)** for agents. It provides a structured approach to failure recovery and proactive problem-solving through an escalation hierarchy of strategies.
+Contingency Course Check and Revision Strategies (CCRS) provide runtime guidance when an agent cannot confidently continue its normal plan. A request describes observable evidence; strategies decide their own applicability from that evidence and the run-local context history.
 
-## 📂 Module Overview
+## Module overview
 
 ```text
 ccrs/core/contingency/
-├── Situation.java              # Input POJO describing the problematic situation.
-├── StrategyResult.java         # Output sealed type: Suggestion | NoHelp.
-├── CcrsStrategy.java           # Base interface for all recovery strategies.
-├── ContingencyCcrs.java        # Main entry point orchestrating strategy evaluation.
-├── StrategyRegistry.java       # Registry managing available strategies.
-├── ContingencyConfiguration.java # Configuration options for the system.
-├── CcrsTrace.java              # Trace object for debugging and learning.
-├── ActionRecord.java           # Record of an action taken by the agent.
-├── StateSnapshot.java          # Snapshot of agent state at a point in time.
-│
-└── strategies/                 # CONCRETE STRATEGY IMPLEMENTATIONS
-    ├── RetryStrategy.java      # L1: Retry with exponential backoff.
-    ├── BacktrackStrategy.java  # L2: Return to previous decision point.
-    ├── PredictionLlmStrategy.java # L4: LLM-based path prediction.
-    ├── ConsultationStrategy.java  # L3: External help via consultation channel.
-    └── StopStrategy.java       # L0: Graceful failure when exhausted.
-
-ccrs/jason/contingency/         # JASON PLATFORM ADAPTERS
-├── evaluate.java               # Internal action: ccrs.contingency.evaluate(...)
-└── report_outcome.java         # Internal action: ccrs.contingency.report_outcome(...)
+|-- ContingencyCcrs.java              # Main evaluation orchestrator
+|-- ContingencyConfiguration.java     # Orchestration and strategy options
+|-- ContingencyCcrsFactory.java       # Core and ServiceLoader assembly
+|-- CcrsStrategy.java                 # Base strategy contract
+|-- StrategyRegistry.java             # Available strategy registry
+|-- dto/
+|   |-- Situation.java                # Type-free request evidence
+|   |-- StrategyResult.java           # Suggestion or NoHelp
+|   |-- CcrsTrace.java                # Evaluation trace and outcome
+|   `-- Interaction.java              # Prior agent interaction
+|-- options/                          # Per-strategy public configuration
+|-- selection/                        # Default and trace-based selection
+`-- strategies/
+    |-- internal/
+    |   |-- RetryStrategy.java        # L1 transient-failure recovery
+    |   |-- BacktrackStrategy.java    # L2 return to a prior decision point
+    |   |-- prediction/
+    |   |   `-- PredictionLlmStrategy.java # L4 model-based prediction
+    |   `-- StopStrategy.java         # L0 advisory last resort
+    `-- social/
+        `-- ConsultationStrategy.java # L3 external consultation
 ```
 
----
+The agent-agnostic core depends on the RDF-focused [CcrsContext.java](../rdf/CcrsContext.java). Platform adapters, such as the [JaCaMo contingency adapter](../../../../../../../ccrs-jacamo/src/main/java/ccrs/jacamo/jason/contingency/README.md), translate their native state into the same core request and context contracts.
 
-## 📄 File Descriptions
+## Core APIs
 
-### Core Module (Agent-Agnostic)
+- [Situation.java](dto/Situation.java) is the primary input DTO. It records evidence known by the caller without classifying the request or selecting a strategy.
+- [StrategyResult.java](dto/StrategyResult.java) is the output type. A `Suggestion` contains actionable advice, confidence, rationale, and parameters; `NoHelp` explains why a strategy did not provide guidance.
+- [CcrsStrategy.java](CcrsStrategy.java) defines strategy identity, category, escalation level, applicability, evaluation, enabled state, and description.
+- [ContingencyCcrs.java](ContingencyCcrs.java) orders, gates, evaluates, traces, and selects strategies.
+- [StrategyRegistry.java](StrategyRegistry.java) manages built-in and contributed strategies.
+- [CcrsTrace.java](dto/CcrsTrace.java) records the request, strategy evaluations, selection, timing, and reported outcome.
+- [Interaction.java](dto/Interaction.java) records prior agent interactions used by strategies such as Retry, Backtrack, and Prediction.
+- [ContingencyConfiguration.java](ContingencyConfiguration.java) exposes orchestration, learned-selection, and built-in strategy options.
 
-*   **`Situation.java`**: Primary input POJO with builder pattern. Describes the problematic context including situation type (FAILURE, STUCK, UNCERTAINTY, PROACTIVE), current/target resources, failed action details, and error information.
+## Request model
 
-*   **`StrategyResult.java`**: Sealed output type with two variants:
-    *   `Suggestion`: Actionable recommendation with actionType, target, confidence, rationale, and parameters.
-    *   `NoHelp`: Explicit "cannot help" response with reason enum and explanation.
+`Situation` is deliberately type-free. It contains only information known by the caller:
 
-*   **`CcrsStrategy.java`**: Base interface defining the contract for all strategies:
-    *   `getId()`, `getName()`: Strategy identification.
-    *   `getCategory()`: INTERNAL, KNOWLEDGE, or SOCIAL.
-    *   `getEscalationLevel()`: 0-4 indicating escalation tier.
-    *   `appliesTo()`: Quick applicability check (APPLICABLE, NOT_APPLICABLE, MAYBE).
-    *   `evaluate()`: Full evaluation returning StrategyResult.
-
-*   **`ContingencyCcrs.java`**: Main orchestrator that evaluates strategies in escalation order. `evaluate()` is the default path and always delegates to `evaluateWithTrace()`, records the resulting trace through `CcrsContext`, and returns the selected results. `evaluateWithTrace()` remains available for callers that want the full trace object directly.
-
-*   **`StrategyRegistry.java`**: Manages strategy registration with filtering by category and escalation level. Supports custom escalation policies.
-
-*   **`CcrsTrace.java`**: Captures the full evaluation process for debugging and future learning. Records which strategies were consulted, their results, and the final selection. Supports `reportOutcome()` for feedback.
-
-*   **`ActionRecord.java`**: Immutable record of an action: type, target, outcome (SUCCESS/FAILURE/PENDING), and timestamp.
-
-*   **`StateSnapshot.java`**: Immutable snapshot of agent state: resource location and timestamp.
-
-### Strategy Implementations
-
-| Strategy | Level | Category | Description |
-|----------|-------|----------|-------------|
-| `RetryStrategy` | L1 | INTERNAL | Handles transient HTTP errors (408, 429, 5xx) with exponential backoff |
-| `BacktrackStrategy` | L2 | INTERNAL | Returns to parent resource using hypermedia link heuristic |
-| `PredictionLlmStrategy` | L4 | INTERNAL | LLM-based prediction for optimal path selection (ANY situation type) |
-| `ConsultationStrategy` | L3 | SOCIAL | Requests external help via pluggable consultation channel (ANY situation type) |
-| `StopStrategy` | L0 | INTERNAL | Graceful failure when all options exhausted (ANY situation type) |
-
-### Jason Adapters
-
-*   **`evaluate.java`**: Internal action `ccrs.contingency.evaluate(Type, Trigger, Current, Target, Action, Error, ResultList)` that invokes the default `ContingencyCcrs.evaluate(...)` path. This returns selected suggestions as a list of literals, or an empty list when no recovery suggestion is selected, and also records trace history in the background. Suggestion params include `hasOpportunisticGuidance(true|false)` so caller agents can tell whether contingency-generated `ccrs/3` guidance was injected.
-
-*   **`track.java`**: Internal action for history tracking:
-    *   `ccrs.contingency.track(action, Type, Target, Outcome)` — record an action.
-    *   `ccrs.contingency.track(state, Resource)` — record current state.
-
-*   **`report_outcome.java`**: Internal action for reporting suggestion outcomes:
-    *   `ccrs.contingency.report_outcome("success")` — suggestion worked.
-    *   `ccrs.contingency.report_outcome("failed", "reason")` — suggestion failed.
-
----
-
-## ⚡ Key Implementation Considerations
-
-### 1. Escalation Hierarchy
-
-Strategies are organized into escalation levels, evaluated in ascending order:
-
-```text
-L1 (Low)      → Retry: Quick, cheap recovery attempts
-L2 (Moderate) → Backtrack: Requires more context/resources
-L3 (Social)   → Consultation: Involves external entities
-L4 (LLM)      → Prediction: Requires model inference and larger context
-L0 (Last)     → Stop: Graceful failure when exhausted
-```
-
-**Default Evaluation Order:** L1 -> L2 -> L3 -> L4 -> L0
-
-This order is the default prior when there is not enough trace history for learned scheduling. `StopStrategy` (L0) is treated as a fallback and is skipped when any recovery suggestion already exists.
-
-The configured escalation policy controls how much of the ordered list is evaluated:
-*   `SEQUENTIAL`: stop after the first suggestion.
-*   `BEST_PER_LEVEL`: evaluate the most promising applicable strategy in each escalation level, then continue to the next level.
-*   `PARALLEL`: consider enabled strategies, while still allowing learned scheduling to skip expensive strategies that are unlikely to improve on an already available suggestion.
-
-### 2. Hypermedia-Oriented Design
-
-The core operates on RDF triples without domain-specific assumptions:
-
-*   **Backtrack Heuristic:** A "parent" is any resource that links TO the current resource (where current appears as the object in a triple). This follows linked data principles.
-*   **No Hardcoded Predicates:** Strategies query the RDF graph generically rather than looking for specific vocabulary terms.
-
-#### Opportunistic path convention
-
-Strategies may attach opportunistic guidance to a concrete suggestion so adapters can inject `ccrs/3` mental notes while the agent continues through its normal option-selection flow. If such a suggestion includes an ordered path parameter, that path must exclude the current resource and must be ordered as executable steps. The first element is the immediate navigation target away from the current context; later elements remain guidance for normal opportunistic prioritization.
-
-[BacktrackStrategy.java](strategies/internal/BacktrackStrategy.java) follows this convention with `backtrackPath`: the path is derived from interaction history, excludes the blocked current resource, and starts with the first cell the agent can move toward.
-
-### 3. Pluggable External Services
-
-Knowledge and Social strategies use pluggable interfaces:
+- `trigger`: a short explanation of why guidance was requested;
+- `currentResource`: the agent's current resource or state;
+- `targetResource`: the intended resource, if known;
+- `failedAction`: the action that failed or made no progress;
+- `errorInfo`: structured failure evidence such as `httpStatus`, `errorType`, and `message`;
+- `metadata`: caller-specific evidence that does not belong in the common fields.
 
 ```java
-// LLM Client for PredictionLlmStrategy
-public interface LlmClient {
-    CompletableFuture<LlmResponse> query(String prompt);
-}
-
-// Consultation Channel for ConsultationStrategy
-public interface ConsultationChannel {
-    CompletableFuture<ConsultationResponse> requestHelp(ConsultationRequest request);
-}
+Situation situation = Situation.builder()
+    .trigger("service_unavailable")
+    .currentResource("https://example.org/orders")
+    .targetResource("https://example.org/orders/42")
+    .failedAction("POST")
+    .httpError(503, "Service unavailable")
+    .metadata("agentName", "order-agent")
+    .build();
 ```
 
-Implementations can be injected via configuration, allowing adaptation to different LLM providers or consultation mechanisms.
+There is no request category or strategy hint. The `trigger` is explanatory evidence, not a classifier. Adding a strategy therefore does not require changing the DTO or every caller.
 
-### 4. Trace-Based Learning
+## Strategy applicability
 
-Every evaluation produces a `CcrsTrace` capturing:
-*   All strategies consulted and their results
-*   The selected suggestion (if any)
-*   Timestamp and situation context
-*   Outcome feedback (via `reportOutcome()`)
+Applicability belongs to each strategy and is determined from concrete request evidence and context:
 
-This enables:
-*   **Debugging:** Understanding why a particular strategy was chosen
-*   **Learning:** Collecting data for improving strategy selection
-*   **Auditing:** Recording decision rationale for review
+| Strategy | Level | Category | Applicability evidence and purpose |
+|---|---:|---|---|
+| `RetryStrategy` | L1 | INTERNAL | Requires `failedAction`, `targetResource`, and a retriable error code or type. Prior attempts are matched by the concrete `(failedAction, targetResource)` pair. |
+| `BacktrackStrategy` | L2 | INTERNAL | Requires `currentResource` and retained interaction history from which a usable earlier decision point can be derived. |
+| `ConsultationStrategy` | L3 | SOCIAL | Requires a configured consultation channel and an eligible external agent discoverable from the context. |
+| `PredictionLlmStrategy` | L4 | INTERNAL | Requires a configured and usable LLM client. It predicts a recovery action from the available evidence and bounded context. |
+| `StopStrategy` | L0 | INTERNAL | Requires run-local trace history to satisfy a degradation threshold and the current invocation to have produced no non-stop suggestion. It advises; it never terminates the agent. |
 
-The default `ContingencyCcrs.evaluate(...)` path records this trace through `CcrsContext`. Adapters can expose that history using the reusable in-memory helper in `ccrs.core.rdf.InMemoryCcrsTraceHistory`.
+`CcrsStrategy.appliesTo(...)` is a fast check returning `APPLICABLE`, `NOT_APPLICABLE`, or `UNKNOWN`. Full work belongs in `evaluate(...)`, which returns either a `Suggestion` or `NoHelp`.
 
-### 5. Learned Evaluation Tradeoff
+## Strategy implementations
 
-Suggestion confidence and strategy evaluation cost are handled as separate signals.
+### RetryStrategy (L1)
 
-After a strategy has run, its suggestion is ranked only by `confidence`. At that point the evaluation cost has already been paid, so reducing the suggestion's rank because the strategy was expensive would mix two different decisions.
+[RetryStrategy.java](strategies/internal/RetryStrategy.java) handles failures that are likely to be transient. It is the cheapest recovery strategy and therefore the first default candidate.
 
-Before future strategies are run, `ContingencyCcrs` builds a lightweight strategy profile from recent `CcrsTrace` records:
-*   measured evaluation time from `StrategyEvaluation.getEvaluationTimeMs()`,
-*   how often the strategy produced a suggestion,
-*   the confidence of those suggestions,
-*   optional reported outcome feedback when available.
+Applicability requires all of the following evidence:
 
-Only applicable, evaluated samples are learned from. A `NOT_APPLICABLE` check is context filtering, not evidence that a strategy is poor. This prevents strategies such as consultation or retry from being learned as useless merely because their preconditions were absent in earlier situations.
+- a `failedAction` to repeat;
+- a `targetResource` on which to repeat it;
+- an `httpStatus` or `errorType` included in the configured retriable-code set;
+- fewer than `maxAttempts` prior Retry evaluations for the same `(failedAction, targetResource)` pair within the retry trace lookback.
 
-The learned quality estimate is:
+The default retriable codes are `500`, `502`, `503`, `504`, `timeout`, `connection_reset`, and `connection_refused`. They are policy, not a closed protocol list: deployments can replace or extend them through [RetryStrategyOptions.java](options/RetryStrategyOptions.java).
+
+When applicable, Retry returns a `retry` suggestion targeting the original resource. Its parameters preserve the original action and expose `delayMs`, `attemptNumber`, and `maxAttempts`. Delay grows exponentially:
+
+```text
+delayMs = initialDelayMs * backoffMultiplier ^ priorAttemptCount
+```
+
+Confidence depends on the failure evidence and decreases after each prior attempt. For example, HTTP `503` starts with higher confidence than HTTP `500`, but both decay as repeated retries fail. Retry counting uses completed CCRS traces rather than a caller-supplied request category, so unrelated failures do not consume the retry budget.
+
+### BacktrackStrategy (L2)
+
+[BacktrackStrategy.java](strategies/internal/BacktrackStrategy.java) finds an earlier decision point with unexplored alternatives and proposes navigating back to it. It is applicable when a current resource can be resolved and the context retains interaction history.
+
+Evaluation builds a domain-independent interaction graph:
+
+- nodes are requested resources;
+- observed edges come from consecutive requests in chronological interaction history;
+- advertised edges come from URI objects perceived in successful responses;
+- failed resources and the currently blocked resource are treated as exhausted alternatives;
+- advertised targets that were never requested are treated as unexplored alternatives.
+
+Candidate checkpoints must be reachable and retain at least one unexplored alternative. They are ranked by:
+
+1. shorter backtrack distance;
+2. more unexplored alternatives;
+3. greater recency;
+4. higher validation score.
+
+The selected suggestion has action `navigate` and targets the checkpoint. Its `backtrackPath` excludes the current resource and starts with the first navigation step the agent can execute. Additional parameters describe alternatives, exhausted branches, graph size, distance, and validation. Confidence increases with useful alternatives and decreases with travel distance. Structured opportunistic guidance exposes both path steps and unexplored options to adapters that integrate contingency advice into normal prioritization.
+
+The interaction window is bounded by [BacktrackStrategyOptions.java](options/BacktrackStrategyOptions.java).
+
+### ConsultationStrategy (L3)
+
+[ConsultationStrategy.java](strategies/social/ConsultationStrategy.java) asks another agent, service, model, or human-facing channel for help after local recovery strategies are insufficient. It does not assume a concrete transport; the nested `ConsultationChannel` interface supplies availability, query, and channel-identification operations.
+
+Applicability requires:
+
+- a configured and currently available channel;
+- retained interaction history so the request has a useful basis;
+- at least one consultable peer discovered from recent perceived RDF state.
+
+The current discovery convention finds peer candidates through `maze:contains` statements in recent interactions, removes the current agent, and enriches candidates with in-context A2A agent-card and advertised-capability triples when available. The strategy then constructs a bounded question and context containing the Situation evidence, recent interactions, recent CCRS traces, local RDF neighborhood, and discovered consultation targets.
+
+A successful actionable response becomes a suggestion carrying the consultation source, original advice, response metadata, and any action projection derived from that metadata. Channel confidence is used when it is within `(0, 1]`; otherwise the configured fallback confidence is used. Transport failures, unavailable channels, unsuccessful responses, and advice without an action become explicit `NoHelp` results.
+
+[ConsultationStrategyOptions.java](options/ConsultationStrategyOptions.java) bounds recent interactions, candidate targets, and CCRS traces and configures fallback confidence. An A2A channel is one possible provider; it is not part of the core strategy contract.
+
+### PredictionLlmStrategy (L4)
+
+[PredictionLlmStrategy.java](strategies/internal/prediction/PredictionLlmStrategy.java) asks an LLM to infer a recovery action when cheaper strategies cannot provide sufficient guidance. It is applicable only when an LLM capability is available and a current resource can be resolved.
+
+The prompt keeps four evidence sources separate:
+
+1. the current type-free `Situation`;
+2. bounded recent interactions, including request details, outcomes, and perceived RDF triples;
+3. the bounded incoming and outgoing RDF neighborhood around the current resource;
+4. bounded prior CCRS traces.
+
+The configured `PromptBuilder` serializes this context, the `LlmClient` completes the prompt, and the `LlmResponseParser` converts the response into a structured action. A valid action becomes a suggestion containing the model action and target, confidence, original reasoning, parse method, and HTTP action parameters where present. If the model explicitly declines to suggest an action, the parser cannot produce a valid action, or the model call fails, the strategy returns `NoHelp` with the corresponding reason.
+
+Model-provided confidence is used when present; otherwise `baseConfidence` supplies the fallback. [PredictionLlmStrategyOptions.java](options/PredictionLlmStrategyOptions.java) bounds every prompt-history source, controls local-neighborhood limits and namespace filtering, and decides whether the parser may extract a low-confidence action from non-JSON text.
+
+### StopStrategy (L0)
+
+[StopStrategy.java](strategies/internal/StopStrategy.java) is not a generic fallback that immediately ends execution. It is an advisory strategy evaluated only after the current invocation produced no non-stop suggestion and run-local history indicates sustained degradation. Its first effect is a one-invocation learned-selection bypass; only after the configured number of unsuccessful reconsideration cycles can it produce a `stop` suggestion. The complete thresholds, episode boundaries, and interpretation are described in [Stop behavior](#stop-behavior).
+
+## Escalation and selection
+
+The default prior orders strategies by increasing effort and disruption:
+
+```text
+L1 Retry -> L2 Backtrack -> L3 Consultation -> L4 Prediction -> L0 Stop
+```
+
+L0 is always treated as the last resort, not as the numerically first level. The configured escalation policy determines how much of the ordered list is evaluated:
+
+- `SEQUENTIAL`: stop after the first suggestion;
+- `BEST_PER_LEVEL`: evaluate the most promising applicable strategy in each escalation level;
+- `PARALLEL`: consider all enabled strategies, subject to learned gates, and rank returned suggestions by confidence.
+
+Maximum level, category filters, explicit enable/disable rules, and maximum returned suggestions remain hard configuration constraints. The default order is a prior used when trace history is insufficient or learned selection is disabled.
+
+### Trace-based learning
+
+Every evaluation produces a `CcrsTrace` containing:
+
+- the request evidence;
+- all applicability decisions and evaluated strategy results;
+- evaluation time per strategy;
+- the selected suggestion or suggestions;
+- the invocation timestamp;
+- optional outcome feedback reported after the agent acts.
+
+This history supports debugging, auditing, and adaptive strategy selection. The default `ContingencyCcrs.evaluate(...)` path records its completed trace through `CcrsContext`. `evaluateWithTrace(...)` returns the trace directly; an adapter using that method must ensure the completed invocation is retained exactly once. Context adapters can reuse [InMemoryCcrsTraceHistory.java](../rdf/InMemoryCcrsTraceHistory.java) for run-local trace retention.
+
+When learned selection is enabled, [TraceBasedStrategySelectionPolicy.java](selection/TraceBasedStrategySelectionPolicy.java) builds profiles from recent traces. Only applicable, actually evaluated samples are learned from. A `NOT_APPLICABLE` result is context filtering, not evidence that a strategy performs poorly.
+
+Suggestion quality and evaluation cost remain separate signals. After a strategy has run, its suggestions are ranked by confidence because the evaluation cost has already been paid. Before another strategy is run, its history is summarized as:
 
 ```text
 expectedConfidence = suggestionRate * learnedConfidence
+averageEvaluationTimeMs = weighted average runtime of applicable evaluations
 ```
 
-`learnedConfidence` is the average suggestion confidence, optionally blended with reported outcome feedback when available. `suggestionRate` keeps strategies honest when they are applicable but often return `NoHelp`.
+`learnedConfidence` is the weighted average confidence of suggestions the strategy produced, optionally blended with reported outcome feedback. `suggestionRate` captures how often an applicable evaluation produced actionable guidance. Consequently, `NoHelp` lowers the expected chance of receiving a suggestion without pretending that the strategy's actual suggestions had lower confidence.
 
-Concretely, `NoHelp` does not reduce the average confidence of suggestions the strategy actually made. It reduces the estimated chance that running the strategy will produce an actionable suggestion at all. With recent-first weighted traces such as:
+For example, with recent-first weighted traces such as:
 
 ```text
 prediction_llm -> NoHelp
@@ -180,286 +209,310 @@ prediction_llm -> Suggestion(confidence=0.72)
 prediction_llm -> Suggestion(confidence=0.92)
 ```
 
-and the default recency decay in [TraceBasedStrategySelectionModel.java](selection/TraceBasedStrategySelectionModel.java), the model reports an average suggestion confidence near `0.812`, but a suggestion rate near `0.611`. The resulting expected confidence is therefore `0.611 * 0.812 = 0.496`. This is the intended interpretation: the LLM can remain high quality when it speaks, while the selector also learns that it may spend significant time and correctly decline to guess. That keeps an expensive strategy from being re-run when a cheaper current suggestion is already available and the expected incremental value is low.
+with the default recency decay, the model reports average suggestion confidence near `0.812` and suggestion rate near `0.611`. The resulting expected confidence is approximately `0.611 * 0.812 = 0.496`. The LLM can remain high quality when it speaks while the selector also learns that it sometimes spends time and correctly declines to guess. The exact recency weighting is implemented in [TraceBasedStrategySelectionModel.java](selection/TraceBasedStrategySelectionModel.java).
 
-Evaluation time is kept separate:
+### Continue-or-skip rule
 
-```text
-averageEvaluationTimeMs = weighted average runtime for applicable evaluations
-```
-
-This distinction matters because expensive high-confidence strategies are not low-confidence strategies. They are high-confidence strategies that cost time to run.
-
-#### Continue-or-skip rule
-
-When no suggestion exists yet, the next strategy is always evaluated. When a suggestion already exists and the candidate has enough applicable samples, learned selection evaluates the candidate if any of these are true:
+When no suggestion exists yet, the next applicable strategy is always evaluated. Once a suggestion exists and a candidate has enough applicable samples, learned selection continues with that candidate if any of these conditions holds:
 
 ```text
 expectedGain >= minimumExpectedConfidenceGain
 expectedConfidence >= highConfidenceEvaluationFloor
 averageEvaluationTimeMs <= cheapEvaluationTimeMs
-```
 
-Where:
-
-```text
 expectedGain = candidateExpectedConfidence - currentBestSuggestionConfidence
 ```
 
-Default thresholds:
-*   `minimumExpectedConfidenceGain = 0.10`,
-*   `highConfidenceEvaluationFloor = 0.80`,
-*   `cheapEvaluationTimeMs = 250ms`.
+The defaults are:
 
-The selector skips only when the candidate is not expected to improve the current best by enough, is not historically high-confidence, and is not cheap to run.
+- `minimumExpectedConfidenceGain = 0.10`;
+- `highConfidenceEvaluationFloor = 0.80`;
+- `cheapEvaluationTimeMs = 250`;
+- `learningHistoryLimit = 25`;
+- `minimumLearningSamples = 2` per strategy.
 
-#### Example
-
-Suppose backtrack has already produced a suggestion with confidence `0.453`.
-
-Recent LLM traces show:
+Suppose Backtrack already produced confidence `0.453`, while recent Prediction traces yield:
 
 ```text
 suggestionRate = 1.00
 learnedConfidence = 0.92
-averageEvaluationTimeMs = 11951ms
+averageEvaluationTimeMs = 11951
 expectedConfidence = 0.92
 expectedGain = 0.92 - 0.453 = 0.467
 ```
 
-The old scalar model discounted LLM confidence by cost:
+An older scalar model discounted confidence by runtime:
 
 ```text
 0.92 / (1 + 11951 / 3000) = 0.184
 ```
 
-That made a high-confidence LLM look worse than the already available backtrack suggestion. The current model keeps quality and cost separate. Since the expected gain `0.467` is above the default `0.10` threshold, the LLM is still evaluated.
+That made an expensive, high-confidence strategy appear worse than the existing Backtrack suggestion. The current model keeps quality and cost separate, so expected gain `0.467` justifies evaluating Prediction. If expected confidence were `0.50`, the gain would be only `0.047`; the strategy would be skipped because it is neither sufficiently improving, historically above the high-confidence floor, nor cheap.
 
-By contrast, if a strategy has:
+`learningHistoryLimit` bounds the recent traces read by the selection model so old behavior cannot dominate indefinitely. `minimumLearningSamples` is per strategy, not global. See the [strategy-selection README.md](selection/README.md) for the complete ordering and gating contract.
 
-```text
-expectedConfidence = 0.50
-currentBestSuggestionConfidence = 0.453
-expectedGain = 0.047
-averageEvaluationTimeMs = 12000ms
-```
+### One-invocation learned-selection bypass
 
-it is skipped by default because the expected improvement is small, the strategy is not above the high-confidence floor, and it is expensive.
+A learned gate can repeatedly skip strategies whose recent profile is weak. Before Stop recommends ending a run, CCRS performs a bounded reconsideration: Stop can request one invocation using default registry order without learned reordering or learned gates.
 
-Observed side effect: once a cheap strategy such as backtrack consistently produces a medium-confidence suggestion, an expensive strategy such as `prediction_llm` can be skipped repeatedly after one or more `NoHelp` results lower its suggestion rate. Because skipped strategies do not produce fresh samples, their learned profile may recover only when the current best suggestion is weaker or no competing suggestion exists. A possible future mitigation is a bounded probe rule, for example evaluating an otherwise skipped strategy once after a small number of consecutive learned skips when its expected confidence remains plausibly close to the current best. This would keep the confidence and cost model unchanged while adding explicit exploration for stale estimates.
+The bypass:
 
-`learningHistoryLimit` bounds how many recent traces are read into the model. It keeps the runtime selector local, cheap, and adaptive to recent behavior instead of letting old evaluations dominate forever. `minimumLearningSamples` is counted per strategy profile, not globally; with the default value `2`, a strategy needs two applicable, evaluated samples before its learned value can reorder or prune it.
+- lasts for exactly one following invocation;
+- preserves the same trace history rather than starting a new learning epoch;
+- preserves maximum level, disabled strategies, category filters, escalation policy, applicability checks, and suggestion limits;
+- automatically restores learned selection afterward.
 
-### 6. Context Integration
+This gives all otherwise available strategies one fresh opportunity before a Stop suggestion can be produced.
 
-Strategies access agent context via `CcrsContext`:
+## Stop behavior
+
+Stop is advisory. CCRS never terminates the consuming agent, and the agent remains responsible for applying its own time, token, cost, safety, and domain checks.
+
+Stop is evaluated only when the current invocation has produced no non-stop suggestion. It becomes applicable when either historical condition holds:
+
+1. `x` consecutive prior invocations produced no non-stop suggestion; or
+2. `y` prior suggestion-producing invocations in the current degradation episode all had maximum non-stop confidence below `z`.
+
+A reported successful outcome ends the degradation episode even if the originating suggestion confidence was below `z`. A non-stop suggestion at or above `z` also bounds the episode. Trace history is held in memory by the context and therefore scoped to one agent run.
+
+On the first qualifying evaluation, Stop returns `NoHelp(SELECTION_RECONSIDERATION_REQUESTED)`. The next invocation bypasses learned selection once. If no strategy helps, that completed bypass counts as one reset cycle. After `v` completed reset cycles, Stop returns the sole suggestion with confidence `1.0`. Its rationale contains the observed counts and configured thresholds so the agent can interpret why stopping is being proposed.
+
+All Stop controls are end-user properties on [StopStrategyOptions.java](options/StopStrategyOptions.java):
+
+| Property | Meaning | Default |
+|---|---|---:|
+| `noSuggestionInvocationThreshold` | `x`: consecutive no-suggestion invocations | `2` |
+| `lowConfidenceInvocationThreshold` | `y`: weak suggestion-producing invocations | `3` |
+| `lowConfidenceThreshold` | `z`: confidence below which guidance is weak | `0.5` |
+| `selectionResetCountBeforeStop` | `v`: completed one-invocation bypass cycles before suggesting Stop | `1` |
+| `traceHistoryLookbackLimit` | Maximum prior `CcrsTrace` records scanned by Stop | `30` |
+
+The lookback is normalized to at least `max(x, y, v + 1)` so configured thresholds remain observable.
+
+## Hypermedia-oriented context
+
+The core operates on RDF triples without domain-specific assumptions:
+
+- Backtrack treats a resource that links to the current resource as a possible parent; it does not require a hard-coded parent predicate.
+- Strategies query the graph generically rather than coupling the core to a domain vocabulary.
+- `CcrsContext.getNeighborhood(...)` provides bounded outgoing and incoming links around one resource.
+- `CcrsContext.getMemoryTriples(...)` provides a broader, bounded RDF-memory snapshot.
+
+[BacktrackStrategy.java](strategies/internal/BacktrackStrategy.java) may attach an ordered `backtrackPath` to its suggestion. An ordered guidance path excludes the current resource, begins with the immediate executable navigation target, and leaves later entries as opportunistic guidance for the agent's normal option-selection flow.
+
+The relevant context surface is:
 
 ```java
 public interface CcrsContext {
-    // RDF queries
-    List<RdfTriple> query(String s, String p, String o);
+    List<RdfTriple> query(String subject, String predicate, String object);
+    boolean contains(RdfTriple triple);
     List<RdfTriple> getMemoryTriples(int maxCount);
     Neighborhood getNeighborhood(String resource, int maxOutgoing, int maxIncoming);
-    Optional<String> getCurrentResource();
-    
-    // History (for contingency)
-    boolean hasHistory();
+
     List<Interaction> getRecentInteractions(int maxCount);
+    Optional<Interaction> getLastInteraction();
+    List<Interaction> getInteractionsFor(String logicalSource);
     Optional<CcrsTrace> getLastCcrsInvocation();
     List<CcrsTrace> getCcrsHistory(int maxCount);
     void recordCcrsInvocation(CcrsTrace trace);
-    
-    // Capabilities
+
+    Optional<String> getCurrentResource();
+    String getAgentId();
+    boolean hasHistory();
     boolean hasLlmAccess();
     boolean hasConsultationChannel();
 }
 ```
 
-`getNeighborhood(...)` is a local link-context API: it returns bounded outgoing and incoming triples around one focus resource. It should remain cheap and small. `getMemoryTriples(...)` is the memory-style API for broader bounded RDF access; LLM prompt generation uses it for raw graph evidence while keeping neighborhood output as a separate local-map section.
+For Prediction, recent interactions are formatted with request headers and body, outcome, timing, and perceived RDF triples. This richer prompt representation is intentionally separate from the compact `Interaction.toString()` used in logs.
 
-For LLM prediction, recent `Interaction` records are formatted with request headers/body, outcome, timing, and perceived RDF triples. This is intentionally separate from `Interaction.toString()`, which remains compact for logs and debug summaries.
+## Pluggable external services
 
-### 7. LLM Prompt Triple Filtering
-
-`PredictionLlmStrategy` performs strategy-level filtering before serializing RDF triples into the LLM prompt. The default filter removes every triple whose subject, predicate, or object contains the `https://example.org/ui` namespace.
-
-This does not remove data from `CcrsContext`, the belief base, interaction history, or other strategies. It is only a prompt-shaping step for L4 prediction.
-
-The rationale is similar to preparing web content for an LLM: a browser page contains HTML, CSS, ARIA, layout metadata, and visual decoration, but question-answering prompts often convert it to markdown or another content-focused representation first. For CCRS prediction, `https://example.org/ui` triples describe presentation details such as UI elements, layers, fills, and drawing properties. Those triples can dominate the token budget while usually adding little to recovery-action selection. Filtering them keeps the prompt focused on actionable hypermedia state, links, previous interactions, and CCRS traces.
-
-The filter is configurable through [`PredictionLlmStrategyOptions.java`](options/PredictionLlmStrategyOptions.java) and the central [`ContingencyConfiguration.java`](ContingencyConfiguration.java), so the same setting applies to strategies created by factories and `ServiceLoader` providers.
-
----
-
-## 🔄 Execution Flow
-
-```text
- ┌─────────────────────────────┐
- │  Agent Detects Problem      │
- │  (Failure, Stuck, etc.)     │
- └─────────────┬───────────────┘
-               │
-               ▼
- ┌─────────────────────────────┐
- │  Build Situation Object     │
- │  (Type, Resources, Error)   │
- └─────────────┬───────────────┘
-               │
-               ▼
- ┌─────────────────────────────────────────────┐
- │  ContingencyCcrs.evaluate(situation, ctx)   │
- └─────────────┬───────────────────────────────┘
-               │
-               ▼
- ┌─────────────────────────────────────────────┐
- │  StrategyRegistry.getByLevel()              │
- │  Iterate L1 → L2 → L3 → L4 → L0             │
- └─────────────┬───────────────────────────────┘
-               │
-      ┌────────┴────────┐
-      │  For each level │
-      └────────┬────────┘
-               │
-               ▼
- ┌─────────────────────────────────────────────┐
- │  strategy.appliesTo(situation, context)     │
- │  Quick filter: APPLICABLE / NOT_APPLICABLE  │
- └─────────────┬───────────────────────────────┘
-               │ If APPLICABLE
-               ▼
- ┌─────────────────────────────────────────────┐
- │  strategy.evaluate(situation, context)      │
- │  Returns: Suggestion | NoHelp               │
- └─────────────┬───────────────────────────────┘
-               │
-      ┌────────┴────────┐
-      │  If Suggestion  │──────────────────────┐
-      └────────┬────────┘                      │
-               │ If NoHelp                     │
-               ▼                               ▼
-      Continue to next strategy    ┌───────────────────────┐
-                                   │  Return Suggestion    │
-                                   │  (Stop evaluation)    │
-                                   └───────────────────────┘
-               │
-               ▼ (All exhausted)
- ┌─────────────────────────────────────────────┐
- │  StopStrategy.evaluate() → Stop Suggestion  │
- │  (Graceful failure)                         │
- └─────────────────────────────────────────────┘
-```
-
----
-
-## 📝 Usage Examples
-
-### AgentSpeak (Jason) Usage
-
-```asl
-// Track navigation for history
-+!crawl(URI) : true
-    <-
-        ccrs.contingency.track(state, URI) ;
-        get(URI, [header("urn:hypermedea:http:authorization", "agent bob")]) ;
-    .
-
-// Handle HTTP failure with contingency CCRS
--!crawl(URI) : true
-    <-
-        .my_name(Me) ;
-        ccrs.contingency.evaluate(
-            "FAILURE",           // Situation type
-            "http_error",        // Trigger
-            URI,                 // Current resource
-            TargetURI,           // Target (if known)
-            "GET",               // Failed action
-            "404",               // Error info
-            Suggestions          // Output: list of suggestions
-        ) ;
-        !handle_suggestions(Suggestions) ;
-    .
-
-// Process suggestions
-+!handle_suggestions([]) :
-    true
-    <-
-        .print("No contingency suggestions available") ;
-        !!stop ;
-    .
-
-+!handle_suggestions([suggestion(Id, ActionType, Target, Confidence, Rationale, Params)|_]) :
-    .member(hasOpportunisticGuidance(true), Params)
-    <-
-        .print("Guidance injected by: ", Id) ;
-        ?at(Current) ;
-        !crawl(Current) ;
-    .
-
-+!handle_suggestions([suggestion(Id, ActionType, Target, Confidence, Rationale, Params)|_]) :
-    Confidence > 0.5
-    <-
-        .print("Trying: ", ActionType, " on ", Target) ;
-        !execute_suggestion(ActionType, Target, Params) ;
-    .
-
-// Report outcome for learning
-+!execute_suggestion(ActionType, Target, Params) : true
-    <-
-        !perform_action(ActionType, Target, Params) ;
-        ccrs.contingency.report_outcome("success") ;
-    .
-
--!execute_suggestion(ActionType, Target, Params) : true
-    <-
-        ccrs.contingency.report_outcome("failed", "action_failed") ;
-    .
-```
-
-### Java API Usage
+Prediction and Consultation depend on narrow pluggable interfaces:
 
 ```java
-// Build situation
+public interface LlmClient {
+    String complete(String prompt) throws Exception;
+    boolean isAvailable();
+}
+
+public interface ConsultationChannel {
+    boolean isAvailable();
+    ConsultationResponse query(String question, Map<String, Object> context)
+        throws Exception;
+    String getChannelType();
+}
+```
+
+Provider-specific collaborators remain in optional modules. [ContingencyCcrsFactory.java](ContingencyCcrsFactory.java) assembles built-in strategies and discovers optional [CcrsStrategyProvider.java](CcrsStrategyProvider.java) implementations through `ServiceLoader`. Providers receive the central configuration through [CcrsStrategyProviderContext.java](CcrsStrategyProviderContext.java).
+
+## LLM prompt triple filtering
+
+[PredictionLlmStrategy.java](strategies/internal/prediction/PredictionLlmStrategy.java) filters RDF triples before serializing them into an LLM prompt. By default, it removes triples whose subject, predicate, or object contains the `https://example.org/ui` namespace.
+
+This is prompt shaping only. It does not remove data from `CcrsContext`, the belief base, interaction history, or other strategies. UI triples can dominate a token budget with presentation details such as layers, fills, and drawing properties while contributing little to recovery-action selection. Filtering keeps the prompt focused on actionable hypermedia state, links, interactions, and prior CCRS traces.
+
+The setting is exposed by [PredictionLlmStrategyOptions.java](options/PredictionLlmStrategyOptions.java) and the central configuration, so factories and `ServiceLoader` providers receive the same behavior.
+
+## Execution flow
+
+```text
+┌───────────────────────────────────────────────────────┐
+│ Agent requests runtime guidance                      │
+│ after observing failure, uncertainty, or no progress │
+└──────────────────────────┬────────────────────────────┘
+                           │
+                           ▼
+┌───────────────────────────────────────────────────────┐
+│ Build a type-free Situation                          │
+│ from resources, failed action, error, and metadata   │
+└──────────────────────────┬────────────────────────────┘
+                           │
+                           ▼
+┌───────────────────────────────────────────────────────┐
+│ ContingencyCcrs.evaluate(situation, context)          │
+│ creates the invocation trace                         │
+└──────────────────────────┬────────────────────────────┘
+                           │
+                           ▼
+┌───────────────────────────────────────────────────────┐
+│ Apply hard configuration filters                     │
+│ enabled IDs/categories, maximum level, policy        │
+└──────────────────────────┬────────────────────────────┘
+                           │
+                           ▼
+┌───────────────────────────────────────────────────────┐
+│ Build the non-stop strategy selection plan           │
+│ Normal: learned/default order and learned gates      │
+│ Reconsideration: default order, learned gates bypassed│
+└──────────────────────────┬────────────────────────────┘
+                           │
+                           ▼
+┌───────────────────────────────────────────────────────┐
+│ For each non-stop candidate                          │
+│ strategy.appliesTo(situation, context)               │
+└───────────────┬──────────────────────────┬────────────┘
+                │ NOT_APPLICABLE           │ APPLICABLE / UNKNOWN
+                ▼                          ▼
+┌───────────────────────────┐  ┌─────────────────────────┐
+│ Record applicability      │  │ Apply learned gate      │
+│ and continue              │  │ SKIP: trace and continue│
+└───────────────┬───────────┘  └────────────┬────────────┘
+                │                           │ ALLOW, or bypass active
+                │                           ▼
+                │              ┌────────────────────────┐
+                │              │ strategy.evaluate(...)│
+                │              │ Suggestion or NoHelp   │
+                │              └────────────┬───────────┘
+                │                           │
+                └──────────────┬────────────┘
+                               │
+                               ▼
+┌───────────────────────────────────────────────────────┐
+│ Continue according to escalation policy              │
+│ Retain Suggestions; trace NoHelp and learned skips   │
+└──────────────────────────┬────────────────────────────┘
+                           │ after candidates/policy stop
+                           ▼
+┌───────────────────────────────────────────────────────┐
+│ Did any non-stop strategy produce a Suggestion?      │
+└──────────────────┬─────────────────────────┬──────────┘
+                   │ YES                     │ NO
+                   ▼                         ▼
+┌──────────────────────────────┐  ┌─────────────────────┐
+│ Select results by confidence │  │ Evaluate Stop       │
+│ Stop is not evaluated        │  │ against run history │
+└──────────────────┬───────────┘  └──────────┬──────────┘
+                   │                         │
+                   │                         ▼
+                   │              ┌───────────────────────────────┐
+                   │              │ Stop result                   │
+                   │              │ Not applicable/NoHelp: none  │
+                   │              │ Reconsideration: bypass next  │
+                   │              │ Suggestion: advise agent stop │
+                   │              └──────────┬────────────────────┘
+                   │                         │
+                   └──────────────┬──────────┘
+                                  │
+                                  ▼
+┌───────────────────────────────────────────────────────┐
+│ Complete and record CcrsTrace exactly once           │
+│ Return selected Suggestions, or an empty result list │
+└───────────────────────────────────────────────────────┘
+```
+
+`evaluate(...)` returns the selected results. `evaluateWithTrace(...)` exposes the full trace for callers that need evaluation diagnostics directly.
+
+## Java usage
+
+```java
 Situation situation = Situation.builder()
-    .type(Situation.Type.STUCK)
+    .trigger("no_valid_transitions")
     .currentResource("http://example.org/cell/5")
     .targetResource("http://example.org/cell/exit")
     .failedAction("navigate")
-    .errorInfo("no valid transitions")
+    .errorInfo("errorType", "NO_PROGRESS")
+    .errorInfo("message", "No valid transitions")
     .build();
 
-// Create contingency evaluator
-ContingencyCcrs ccrs = new ContingencyCcrs();
-ccrs.registerDefaultStrategies();
+ContingencyConfiguration config = ContingencyConfiguration.builder()
+    .maxLevel(4)
+    .maxSuggestions(3)
+    .policy(ContingencyConfiguration.EscalationPolicy.PARALLEL)
+    .build();
 
-// Default evaluation path: records trace via context and returns selected results
+ContingencyCcrs ccrs = ContingencyCcrs.withDefaults(config);
 List<StrategyResult> results = ccrs.evaluate(situation, context);
-StrategyResult result = results.isEmpty() ? null : results.get(0);
 
-if (result instanceof StrategyResult.Suggestion suggestion) {
+if (!results.isEmpty() && results.get(0) instanceof StrategyResult.Suggestion suggestion) {
     System.out.println("Action: " + suggestion.actionType());
     System.out.println("Target: " + suggestion.actionTarget());
     System.out.println("Confidence: " + suggestion.confidence());
-    
-    // Access recorded trace if needed
-    CcrsTrace trace = context.getLastCcrsInvocation().orElse(null);
 
-    // Execute and report outcome
+    CcrsTrace trace = context.getLastCcrsInvocation().orElse(null);
     boolean success = executeAction(suggestion);
     if (trace != null) {
-        trace.reportOutcome(success ? Outcome.SUCCESS : Outcome.FAILURE);
+        trace.reportOutcome(
+            success ? CcrsTrace.Outcome.SUCCESS : CcrsTrace.Outcome.FAILED,
+            success ? "completed" : "action failed");
     }
 }
 ```
 
----
+Outcome reporting is important for learned selection and Stop's degradation-episode boundary. A successful outcome explicitly indicates that the run recovered.
 
-## 🔧 Configuration
+## AgentSpeak usage
 
-Use [`ContingencyConfiguration.java`](ContingencyConfiguration.java) for both orchestration settings and built-in strategy options:
+The JaCaMo adapter accepts a type-free `map(...)`, not a positional request category:
+
+```asl
+ccrs.jacamo.jason.contingency.evaluate(
+    map(
+        trigger("service_unavailable"),
+        current(CurrentURI),
+        target(TargetURI),
+        action("POST"),
+        http_status("503"),
+        error_message("Service unavailable")
+    ),
+    Suggestions
+);
+```
+
+The result is a list of `suggestion(...)` terms. Consumers should inspect the proposed action and confidence. A `stop` action is advice to consider ending the run, not an automatic termination command. See the [JaCaMo contingency README.md](../../../../../../../ccrs-jacamo/src/main/java/ccrs/jacamo/jason/contingency/README.md) and [examples.asl](../../../../../../../ccrs-jacamo/src/main/resources/ccrs/jacamo/jason/contingency/examples.asl) for the adapter contract and complete handlers.
+
+## Configuration
+
+Use [ContingencyConfiguration.java](ContingencyConfiguration.java) for orchestration, learned selection, and built-in strategy properties:
 
 ```java
 ContingencyConfiguration config = ContingencyConfiguration.builder()
-    .maxEscalationLevel(4)
+    .maxLevel(4)
+    .maxSuggestions(3)
+    .policy(ContingencyConfiguration.EscalationPolicy.PARALLEL)
+    .learnedSelection(true)
+    .learningHistoryLimit(25)
+    .minimumLearningSamples(2)
     .minimumExpectedConfidenceGain(0.10)
     .highConfidenceEvaluationFloor(0.80)
     .cheapEvaluationTimeMs(250)
@@ -474,14 +527,19 @@ ContingencyConfiguration config = ContingencyConfiguration.builder()
         .maxRecentInteractions(8)
         .maxAgentCandidates(3))
     .stop(options -> options
-        .requireExhaustion(true)
-        .exhaustionThreshold(2))
+        .noSuggestionInvocationThreshold(2)
+        .lowConfidenceInvocationThreshold(3)
+        .lowConfidenceThreshold(0.5)
+        .selectionResetCountBeforeStop(1)
+        .traceHistoryLookbackLimit(30))
     .build();
 
 ContingencyCcrs ccrs =
     ContingencyCcrsFactory.withDefaultsAndDiscoveredProviders(config);
 ```
 
-Provider-specific collaborators, such as LangChain4j LLM clients or A2A consultation channels, stay in optional modules. Those modules receive the same central configuration through [`CcrsStrategyProviderContext.java`](CcrsStrategyProviderContext.java) when they are discovered by [`ContingencyCcrsFactory.java`](ContingencyCcrsFactory.java).
+## Extension points
 
+Implement [CcrsStrategy.java](CcrsStrategy.java) and register it in [StrategyRegistry.java](StrategyRegistry.java), or publish a [CcrsStrategyProvider.java](CcrsStrategyProvider.java) through `ServiceLoader`. A strategy supplies its ID, category, escalation level, applicability decision, evaluation result, and description. It must derive applicability from request evidence and context rather than requiring callers to preselect it.
 
+Keep strategy implementations stateless. Run-specific evidence and history belong in `Situation` and `CcrsContext`; user-tunable behavior belongs in explicit configuration properties.

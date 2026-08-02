@@ -30,7 +30,8 @@ public final class CcrsLibraryConsumer {
             new RdfTriple("https://example.org/room-a", "https://example.org/connectsTo", "https://example.org/room-b")
         ));
 
-        Situation situation = Situation.failure("HTTP request failed")
+        Situation situation = Situation.builder()
+            .trigger("http_request_failed")
             .failedAction("GET")
             .targetResource("https://example.org/api/orders")
             .httpError(503, "Service unavailable")
@@ -40,7 +41,12 @@ public final class CcrsLibraryConsumer {
             .retry(options -> options
                 .maxAttempts(5)
                 .initialDelayMs(500))
-            .stop(options -> options.exhaustionThreshold(1))
+            .stop(options -> options
+                .noSuggestionInvocationThreshold(2)
+                .lowConfidenceInvocationThreshold(3)
+                .lowConfidenceThreshold(0.5)
+                .selectionResetCountBeforeStop(1)
+                .traceHistoryLookbackLimit(30))
             .build();
 
         ContingencyCcrs ccrs = ContingencyCcrsFactory.withCoreDefaults(config);

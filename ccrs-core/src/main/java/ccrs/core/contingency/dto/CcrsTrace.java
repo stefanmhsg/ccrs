@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.OptionalDouble;
 import java.util.UUID;
 
 import ccrs.core.contingency.CcrsStrategy;
@@ -143,6 +144,49 @@ public class CcrsTrace {
             .orElse(null);
     }
 
+    /** Return selected recovery guidance, excluding Stop's advisory suggestion. */
+    public List<StrategyResult.Suggestion> getNonStopSuggestions() {
+        return selectedResults.stream()
+            .filter(StrategyResult::isSuggestion)
+            .map(StrategyResult::asSuggestion)
+            .filter(suggestion -> !"stop".equals(suggestion.getStrategyId()))
+            .toList();
+    }
+
+    /** Check whether this invocation returned any non-Stop guidance. */
+    public boolean hasNonStopSuggestions() {
+        return !getNonStopSuggestions().isEmpty();
+    }
+
+    /** Return the strongest selected non-Stop confidence, when guidance exists. */
+    public OptionalDouble getMaxNonStopSuggestionConfidence() {
+        return getNonStopSuggestions().stream()
+            .mapToDouble(StrategyResult.Suggestion::getConfidence)
+            .max();
+    }
+
+    /** Check whether the consuming agent later reported this invocation as successful. */
+    public boolean hasSuccessfulOutcome() {
+        return outcome == Outcome.SUCCESS;
+    }
+
+    /** Check for a typed NoHelp control result from a specific strategy. */
+    public boolean didStrategyReturnNoHelp(
+            String strategyId,
+            StrategyResult.NoHelpReason reason) {
+        for (StrategyEvaluation evaluation : evaluations) {
+            if (!matchesStrategy(evaluation, strategyId)) {
+                continue;
+            }
+            StrategyResult result = evaluation.getResult();
+            if (result != null && !result.isSuggestion()
+                    && result.asNoHelp().getReason() == reason) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * Check whether a specific strategy was evaluated in this trace.
      * Evaluation means the strategy produced an evaluation result, not merely
@@ -230,7 +274,7 @@ public class CcrsTrace {
     /**
      * Return a short string representation of CcrsTrace:
      * - ID (shortened)
-     * - Situation type
+     * - Request description
      * - Number of evaluated strategies
      * - Number of suggestions found
      * - Final outcome (if reported)
@@ -240,7 +284,7 @@ public class CcrsTrace {
         int suggestions = (int) selectedResults.stream()
             .filter(StrategyResult::isSuggestion).count();
         return String.format("CcrsTrace{id=%s, situation=%s, evaluated=%d, suggestions=%d, outcome=%s}",
-            id.substring(0, 8), situation.getType(), evaluations.size(), suggestions, outcome);
+            id.substring(0, 8), situation, evaluations.size(), suggestions, outcome);
     }
     
     /**

@@ -261,7 +261,7 @@ public abstract class StrategyResult {
      * Reasons why a strategy cannot help.
      */
     public enum NoHelpReason {
-        /** Strategy does not apply to this type of situation */
+        /** Strategy does not apply to the available evidence and context */
         NOT_APPLICABLE,
         /** Required precondition or configuration is missing */
         PRECONDITION_MISSING,
@@ -270,6 +270,8 @@ public abstract class StrategyResult {
         /** Not enough context information to make a suggestion */
         INSUFFICIENT_CONTEXT,
         /** Strategy evaluation failed with an error */
-        EVALUATION_FAILED
+        EVALUATION_FAILED,
+        /** Stop requests one invocation without trace-learned ordering or gates */
+        SELECTION_RECONSIDERATION_REQUESTED
     }
 }

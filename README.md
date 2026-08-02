@@ -132,7 +132,7 @@ gradle run "-Pjcm=dfs_opportunistic_ccrs.jcm"
 
 ##### DFS Baseline Agent extended with opportunistic and contingency CCRS:
 
-* [dfs_ccrs.asl](src/agt/dfs_ccrs.asl) extends the DFS baseline agent with opportunistic CCRS features. It defaults to DFS but prioritizes options at every step based on opportunistic CCRS outcomes. Additionally, it incorporates contingency CCRS features that provide a set of strategies to guide the agent's actions in case of predefined situations.
+* [dfs_ccrs.asl](src/agt/dfs_ccrs.asl) extends the DFS baseline agent with opportunistic CCRS features. It defaults to DFS but prioritizes options at every step based on opportunistic CCRS outcomes. It also requests contingency guidance with concrete runtime evidence; each strategy determines whether it applies.
 
 ```powershell
 gradle run "-Pjcm=dfs_ccrs.jcm"

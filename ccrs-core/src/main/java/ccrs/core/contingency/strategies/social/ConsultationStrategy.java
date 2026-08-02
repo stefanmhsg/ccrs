@@ -25,7 +25,7 @@ import org.apache.jena.rdf.model.StmtIterator;
 
 /**
  * L3: Consultation Strategy (Social)
- * Applies to: ANY situation type.
+ * Applies when a consultation channel and peer evidence are available.
  * 
  * Requests help from external agents when internal strategies are insufficient.
  * Uses a pluggable consultation channel. For the current A2A flow, the
@@ -334,7 +334,7 @@ public class ConsultationStrategy implements CcrsStrategy {
     private Map<String, Object> buildContext(Situation situation, CcrsContext context) {
         Map<String, Object> ctx = new HashMap<>();
         
-        ctx.put("situationType", situation.getType().name());
+        ctx.put("trigger", situation.getTrigger());
         ctx.put("currentResource", situation.getCurrentResource());
         ctx.put("targetResource", situation.getTargetResource());
         ctx.put("failedAction", situation.getFailedAction());
@@ -354,7 +354,9 @@ public class ConsultationStrategy implements CcrsStrategy {
             List<CcrsTrace> ccrsHistory = context.getCcrsHistory(maxCcrsTraces);
             ctx.put("previousCcrsInvocations", ccrsHistory.stream()
                 .map(t -> Map.of(
-                    "situation", t.getSituation().getType().name(),
+                    "trigger", t.getSituation().getTrigger() != null
+                        ? t.getSituation().getTrigger()
+                        : "",
                     "outcome", t.getOutcome().name()))
                 .collect(Collectors.toList()));
         }

@@ -53,6 +53,12 @@ The important split is:
 - core RDF provides a reusable in-memory trace-history store
 - the adapter is responsible for exposing that history through `CcrsContext` and scoping it correctly
 
+A completed invocation must be recorded exactly once. Callers of
+`ContingencyCcrs.evaluate(...)` must not record again because that method owns
+recording. An adapter that calls `evaluateWithTrace(...)` owns the single
+`recordCcrsInvocation(...)` call. In-memory histories should be scoped to one
+agent run so Stop degradation episodes and learned selection never mix runs.
+
 ## Design Note
 
 In the current Jason integration, each agent gets its own `JasonCcrsContext`, and that context delegates trace storage to `InMemoryCcrsTraceHistory`. The storage code is reusable core infrastructure; the adapter still decides whether that store is per-agent, shared, reset on restart, or replaced with another implementation later.

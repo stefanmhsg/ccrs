@@ -100,8 +100,11 @@ MAIN LOOP
     <-
         .print("CATCH ERROR: -!evaluate_actions(Location)") ;
         .print("CONTIGENCY CCRS: evaluate()") ;
-        // Constructor with: (4 args): evaluate(Type, Trigger, Focus, Result) Result is the output of evaluate()
-        ccrs.jacamo.jason.contingency.evaluate("failure", "!evaluate_actions(Location) failed", Location, Suggestions) ;
+        //Suggestions is the output of evaluate().
+        ccrs.jacamo.jason.contingency.evaluate(
+            map(trigger("!evaluate_actions(Location) failed"), current(Location)),
+            Suggestions
+        ) ;
 
         !handle_suggestions(Suggestions) ;
     .

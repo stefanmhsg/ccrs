@@ -11,6 +11,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 import ccrs.core.contingency.CcrsStrategy;
+import ccrs.core.contingency.ContingencyConfiguration;
 import ccrs.core.contingency.dto.CcrsTrace;
 import ccrs.core.contingency.dto.Situation;
 import ccrs.core.contingency.dto.StrategyResult;
@@ -19,6 +20,13 @@ import ccrs.core.rdf.CcrsContext;
 import ccrs.core.rdf.RdfTriple;
 
 class StopStrategyTest {
+
+    private static final Situation REQUEST = Situation.builder()
+        .trigger("runtime guidance requested")
+        .failedAction("DELETE")
+        .targetResource("https://example.test/item/42")
+        .httpError(500, "Internal error")
+        .build();
 
     @Test
     void exposesStableStrategyMetadata() {
@@ -29,154 +37,264 @@ class StopStrategyTest {
         assertEquals(CcrsStrategy.Category.INTERNAL, strategy.getCategory());
         assertEquals(0, strategy.getEscalationLevel());
         assertEquals(
-            "Last resort - graceful goal abandonment when recovery is impossible",
+            "Advisory stop after degraded guidance and ungated reconsideration",
             strategy.getDescription());
         assertTrue(strategy.isEnabled());
     }
 
     @Test
-    void defaultPolicyRequiresTwoMatchingNonStopAttemptTraces() {
-        Situation situation = Situation.failure("failed").build();
+    void consecutiveNoGuidanceInvocationsRequestTypedReconsideration() {
         StopStrategy strategy = new StopStrategy();
+        TestContext context = new TestContext(List.of(noGuidance(), noGuidance()));
 
-        assertNotApplicable(strategy, situation, new TestContext(List.of()));
-        assertNotApplicable(strategy, situation, new TestContext(List.of(attempt(situation, "retry"))));
-        assertApplicable(strategy, situation, new TestContext(List.of(
-            attempt(situation, "retry"),
-            attempt(situation, "backtrack"))));
+        assertApplicable(strategy, context);
+        StrategyResult result = strategy.evaluate(REQUEST, context);
+
+        assertNoHelp(result, StrategyResult.NoHelpReason.SELECTION_RECONSIDERATION_REQUESTED);
+        assertTrue(result.asNoHelp().getExplanation().contains("trigger=no_suggestions"));
+        assertTrue(result.asNoHelp().getExplanation().contains("consecutiveNoSuggestionCount=2/2"));
     }
 
     @Test
-    void countsOnlyMatchingSituationTypesAndExcludesStopEvaluations() {
-        Situation failure = Situation.failure("failed").build();
-        Situation stuck = Situation.stuck("blocked").build();
+    void noGuidanceTriggerIsStrictlyConsecutive() {
+        StopStrategy strategy = new StopStrategy();
         TestContext context = new TestContext(List.of(
-            attempt(failure, "retry"),
-            attempt(stuck, "backtrack"),
-            attempt(failure, StopStrategy.ID)));
+            noGuidance(),
+            weakGuidance(0.2),
+            noGuidance(),
+            noGuidance()));
 
-        assertNotApplicable(new StopStrategy(), failure, context);
+        assertNotApplicable(strategy, context);
     }
 
     @Test
-    void evaluationDefensivelyRejectsUnmetExhaustionThreshold() {
-        Situation situation = Situation.failure("failed").build();
-
-        StrategyResult result = new StopStrategy().evaluate(
-            situation,
-            new TestContext(List.of(attempt(situation, "retry"))));
-
-        assertNoHelp(result, StrategyResult.NoHelpReason.NOT_APPLICABLE);
-        assertEquals("Only 1 strategies attempted, threshold is 2", result.asNoHelp().getExplanation());
-    }
-
-    @Test
-    void exhaustedSuggestionContainsCompleteFailureDiagnostics() {
-        Situation situation = Situation.failure("request failed")
-            .failedAction("DELETE")
-            .targetResource("https://example.test/item/42")
-            .httpError(500, "Internal error")
-            .build();
+    void weakGuidanceTriggerIgnoresInterveningNoGuidance() {
+        StopStrategy strategy = new StopStrategy();
         TestContext context = new TestContext(List.of(
-            attempt(situation, "retry"),
-            attempt(situation, "backtrack")));
+            weakGuidance(0.49),
+            noGuidance(),
+            weakGuidance(0.20),
+            weakGuidance(0.42)));
 
-        StrategyResult.Suggestion suggestion = new StopStrategy().evaluate(situation, context).asSuggestion();
+        assertApplicable(strategy, context);
+        StrategyResult result = strategy.evaluate(REQUEST, context);
+
+        assertNoHelp(result, StrategyResult.NoHelpReason.SELECTION_RECONSIDERATION_REQUESTED);
+        assertTrue(result.asNoHelp().getExplanation().contains("trigger=low_confidence"));
+        assertTrue(result.asNoHelp().getExplanation().contains("recentLowConfidenceCount=3/3"));
+    }
+
+    @Test
+    void bothTriggersAreReportedWhenBothPatternsExist() {
+        StopStrategy strategy = new StopStrategy();
+        TestContext context = new TestContext(List.of(
+            noGuidance(),
+            noGuidance(),
+            weakGuidance(0.1),
+            weakGuidance(0.2),
+            weakGuidance(0.3)));
+
+        StrategyResult result = strategy.evaluate(REQUEST, context);
+
+        assertNoHelp(result, StrategyResult.NoHelpReason.SELECTION_RECONSIDERATION_REQUESTED);
+        assertTrue(result.asNoHelp().getExplanation().contains("trigger=both"));
+    }
+
+    @Test
+    void confidenceAtThresholdEndsTheDegradationEpisode() {
+        StopStrategy strategy = new StopStrategy();
+        TestContext context = new TestContext(List.of(
+            weakGuidance(0.2),
+            weakGuidance(0.5),
+            weakGuidance(0.1),
+            weakGuidance(0.1)));
+
+        assertNotApplicable(strategy, context);
+    }
+
+    @Test
+    void reportedSuccessEndsEpisodeEvenForWeakGuidance() {
+        CcrsTrace successfulWeakGuidance = weakGuidance(0.2);
+        successfulWeakGuidance.reportOutcome(CcrsTrace.Outcome.SUCCESS, "worked");
+        TestContext context = new TestContext(List.of(
+            weakGuidance(0.2),
+            successfulWeakGuidance,
+            weakGuidance(0.2),
+            weakGuidance(0.2)));
+
+        assertNotApplicable(new StopStrategy(), context);
+    }
+
+    @Test
+    void nonSuccessfulOutcomesDoNotOverrideWeakConfidence() {
+        for (CcrsTrace.Outcome outcome : List.of(
+                CcrsTrace.Outcome.PENDING,
+                CcrsTrace.Outcome.UNKNOWN,
+                CcrsTrace.Outcome.PARTIAL,
+                CcrsTrace.Outcome.FAILED)) {
+            CcrsTrace trace = weakGuidance(0.2);
+            trace.reportOutcome(outcome, "test");
+            assertApplicable(new StopStrategy(), new TestContext(List.of(
+                trace,
+                weakGuidance(0.2),
+                weakGuidance(0.2))));
+        }
+    }
+
+    @Test
+    void stopSuggestionDoesNotCountAsHealthyGuidance() {
+        TestContext context = new TestContext(List.of(
+            stopSuggestion(),
+            noGuidance()));
+
+        assertApplicable(new StopStrategy(), context);
+    }
+
+    @Test
+    void completedBypassProducesSoleAdvisoryStopSuggestion() {
+        TestContext context = new TestContext(List.of(
+            resetRequest(),
+            noGuidance(),
+            noGuidance()));
+
+        StrategyResult.Suggestion suggestion = new StopStrategy().evaluate(REQUEST, context).asSuggestion();
 
         assertEquals(StopStrategy.ID, suggestion.getStrategyId());
         assertEquals("stop", suggestion.getActionType());
         assertEquals(null, suggestion.getActionTarget());
-        assertEquals("exhausted", suggestion.getActionParam("reason"));
-        assertEquals(2, suggestion.<Integer>getActionParam("attemptedCount"));
-        assertEquals("FAILURE", suggestion.getActionParam("situationType"));
-        assertEquals(
-            "Failed action: DELETE on https://example.test/item/42. HTTP 500: Internal error",
-            suggestion.getActionParam("finalError"));
+        assertEquals("no_suggestions", suggestion.getActionParam("trigger"));
+        assertEquals(3, suggestion.<Integer>getActionParam("consecutiveNoSuggestionCount"));
+        assertEquals(2, suggestion.<Integer>getActionParam("noSuggestionInvocationThreshold"));
+        assertEquals(1, suggestion.<Integer>getActionParam("completedSelectionBypassCount"));
+        assertEquals(1, suggestion.<Integer>getActionParam("selectionResetCountBeforeStop"));
+        assertEquals(30, suggestion.<Integer>getActionParam("traceHistoryLookbackLimit"));
+        assertEquals("DELETE", suggestion.getActionParam("failedAction"));
+        assertEquals("500", suggestion.getActionParam("httpStatus"));
         assertEquals(1.0, suggestion.getConfidence(), 0.0);
-        assertTrue(suggestion.getRationale().contains("All 2 recovery strategies exhausted."));
+        assertTrue(suggestion.getRationale().contains("consider stopping"));
+        assertTrue(suggestion.getRationale().contains("agent retains the final decision"));
+        assertTrue(suggestion.getRationale().contains("without learned ordering or gating"));
     }
 
     @Test
-    void immediateStopClassifiesKnownTerminalHttpStatuses() {
-        StopStrategy strategy = immediateStop();
-
-        assertEquals("resource_gone", reason(strategy, failureWithStatus(410)));
-        assertEquals("access_denied", reason(strategy, failureWithStatus(401)));
-        assertEquals("access_denied", reason(strategy, failureWithStatus(403)));
-        assertEquals("unrecoverable", reason(strategy, failureWithStatus(422)));
-    }
-
-    @Test
-    void immediateStopUsesTriggerOrUnknownErrorWhenDetailsAreAbsent() {
-        StopStrategy strategy = immediateStop();
-        StrategyResult.Suggestion triggered = strategy.evaluate(
-            Situation.stuck("No available link").build(), null).asSuggestion();
-        StrategyResult.Suggestion unknown = strategy.evaluate(
-            Situation.builder(Situation.Type.UNCERTAINTY).build(), null).asSuggestion();
-
-        assertEquals("Trigger: No available link", triggered.getActionParam("finalError"));
-        assertEquals("Unknown error", unknown.getActionParam("finalError"));
-        assertTrue(triggered.getRationale().startsWith("No recovery options available."));
-    }
-
-    @Test
-    void respectsConfiguredTraceLookbackLimit() {
-        Situation situation = Situation.failure("failed").build();
-        TestContext context = new TestContext(List.of(
-            attempt(situation, "retry"),
-            attempt(situation, "backtrack")));
+    void configuredMultipleBypassesDelayStop() {
         StopStrategy strategy = new StopStrategy(StopStrategyOptions.builder()
-            .exhaustionThreshold(2)
-            .stopLookbackLimit(1)
+            .selectionResetCountBeforeStop(2)
             .build());
 
-        assertNotApplicable(strategy, situation, context);
-        assertEquals(1, context.requestedTraceLimit);
+        StrategyResult afterOne = strategy.evaluate(REQUEST, new TestContext(List.of(
+            resetRequest(),
+            noGuidance(),
+            noGuidance())));
+        StrategyResult afterTwo = strategy.evaluate(REQUEST, new TestContext(List.of(
+            resetRequest(),
+            noGuidance(),
+            resetRequest(),
+            noGuidance())));
+
+        assertNoHelp(afterOne, StrategyResult.NoHelpReason.SELECTION_RECONSIDERATION_REQUESTED);
+        assertTrue(afterTwo.isSuggestion(), afterTwo::toDetailedReport);
     }
 
     @Test
-    void nullOptionsUseDefaultsAndInvalidBoundsAreNormalized() {
+    void ignoredStopCanBeSuggestedAgainWithinSameEpisode() {
+        TestContext context = new TestContext(List.of(
+            stopSuggestion(),
+            resetRequest(),
+            noGuidance(),
+            noGuidance()));
+
+        assertTrue(new StopStrategy().evaluate(REQUEST, context).isSuggestion());
+    }
+
+    @Test
+    void optionBoundsSnapshotsAndCentralConfigurationArePreserved() {
         StopStrategyOptions options = StopStrategyOptions.builder()
-            .exhaustionThreshold(-1)
-            .stopLookbackLimit(0)
+            .noSuggestionInvocationThreshold(4)
+            .lowConfidenceInvocationThreshold(2)
+            .lowConfidenceThreshold(2.0)
+            .selectionResetCountBeforeStop(5)
+            .traceHistoryLookbackLimit(1)
+            .build();
+        StopStrategyOptions snapshot = options.toBuilder().build();
+        ContingencyConfiguration configuration = ContingencyConfiguration.builder()
+            .stop(options)
             .build();
 
-        assertEquals(0, options.getExhaustionThreshold());
-        assertEquals(1, options.getStopLookbackLimit());
-        assertNotApplicable(new StopStrategy(null), Situation.failure("failed").build(), null);
+        assertEquals(4, snapshot.getNoSuggestionInvocationThreshold());
+        assertEquals(2, snapshot.getLowConfidenceInvocationThreshold());
+        assertEquals(1.0, snapshot.getLowConfidenceThreshold(), 0.0);
+        assertEquals(5, snapshot.getSelectionResetCountBeforeStop());
+        assertEquals(6, snapshot.getTraceHistoryLookbackLimit());
+        assertEquals(snapshot.getTraceHistoryLookbackLimit(),
+            configuration.getStopStrategyOptions().getTraceHistoryLookbackLimit());
+
+        StopStrategyOptions normalized = StopStrategyOptions.builder()
+            .noSuggestionInvocationThreshold(0)
+            .lowConfidenceInvocationThreshold(0)
+            .lowConfidenceThreshold(Double.NaN)
+            .selectionResetCountBeforeStop(0)
+            .traceHistoryLookbackLimit(0)
+            .build();
+        assertEquals(1, normalized.getNoSuggestionInvocationThreshold());
+        assertEquals(1, normalized.getLowConfidenceInvocationThreshold());
+        assertEquals(0.5, normalized.getLowConfidenceThreshold(), 0.0);
+        assertEquals(1, normalized.getSelectionResetCountBeforeStop());
+        assertEquals(2, normalized.getTraceHistoryLookbackLimit());
     }
 
-    private static StopStrategy immediateStop() {
-        return new StopStrategy(StopStrategyOptions.builder()
-            .requireExhaustion(false)
+    @Test
+    void requestsConfiguredTraceHistoryBoundAndNullOptionsUseDefaults() {
+        TestContext context = new TestContext(List.of(noGuidance(), noGuidance()));
+        StopStrategy strategy = new StopStrategy(StopStrategyOptions.builder()
+            .traceHistoryLookbackLimit(7)
             .build());
+
+        assertApplicable(strategy, context);
+        assertEquals(7, context.requestedTraceLimit);
+        assertNotApplicable(new StopStrategy(null), new TestContext(List.of()));
     }
 
-    private static String reason(StopStrategy strategy, Situation situation) {
-        return strategy.evaluate(situation, null).asSuggestion().getActionParam("reason");
+    private static CcrsTrace noGuidance() {
+        return CcrsTrace.builder(REQUEST).build();
     }
 
-    private static Situation failureWithStatus(int status) {
-        return Situation.failure("failed").httpError(status, "error").build();
-    }
-
-    private static CcrsTrace attempt(Situation situation, String strategyId) {
-        return CcrsTrace.builder(situation)
-            .addEvaluation(
-                strategyId,
-                1,
-                CcrsStrategy.Applicability.APPLICABLE,
-                StrategyResult.noHelp(strategyId, StrategyResult.NoHelpReason.PRECONDITION_MISSING, "test"),
-                1L)
+    private static CcrsTrace weakGuidance(double confidence) {
+        StrategyResult suggestion = StrategyResult.suggest("retry", "retry")
+            .confidence(confidence)
+            .build();
+        return CcrsTrace.builder(REQUEST)
+            .addEvaluation("retry", 1, CcrsStrategy.Applicability.APPLICABLE, suggestion, 1L)
+            .selectedResults(List.of(suggestion))
             .build();
     }
 
-    private static void assertApplicable(StopStrategy strategy, Situation situation, CcrsContext context) {
-        assertEquals(CcrsStrategy.Applicability.APPLICABLE, strategy.appliesTo(situation, context));
+    private static CcrsTrace resetRequest() {
+        StrategyResult result = StrategyResult.noHelp(
+            StopStrategy.ID,
+            StrategyResult.NoHelpReason.SELECTION_RECONSIDERATION_REQUESTED,
+            "test reset");
+        return CcrsTrace.builder(REQUEST)
+            .addEvaluation(StopStrategy.ID, 0, CcrsStrategy.Applicability.APPLICABLE, result, 1L)
+            .build();
     }
 
-    private static void assertNotApplicable(StopStrategy strategy, Situation situation, CcrsContext context) {
-        assertEquals(CcrsStrategy.Applicability.NOT_APPLICABLE, strategy.appliesTo(situation, context));
+    private static CcrsTrace stopSuggestion() {
+        StrategyResult suggestion = StrategyResult.suggest(StopStrategy.ID, "stop")
+            .confidence(1.0)
+            .build();
+        return CcrsTrace.builder(REQUEST)
+            .addEvaluation(StopStrategy.ID, 0, CcrsStrategy.Applicability.APPLICABLE, suggestion, 1L)
+            .selectedResults(List.of(suggestion))
+            .build();
+    }
+
+    private static void assertApplicable(StopStrategy strategy, CcrsContext context) {
+        assertEquals(CcrsStrategy.Applicability.APPLICABLE, strategy.appliesTo(REQUEST, context));
+    }
+
+    private static void assertNotApplicable(StopStrategy strategy, CcrsContext context) {
+        assertEquals(CcrsStrategy.Applicability.NOT_APPLICABLE, strategy.appliesTo(REQUEST, context));
     }
 
     private static void assertNoHelp(StrategyResult result, StrategyResult.NoHelpReason reason) {
