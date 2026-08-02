@@ -182,7 +182,32 @@ function Normalize-MaseExports {
 
     try {
         foreach ($file in $Files) {
-            foreach ($line in Get-Content -LiteralPath $file.FullName) {
+            $raw = Get-Content -LiteralPath $file.FullName -Raw
+            if ([string]::IsNullOrWhiteSpace($raw)) {
+                continue
+            }
+
+            $trimmed = $raw.TrimStart()
+            if ($trimmed.StartsWith("[")) {
+                try {
+                    foreach ($record in ($raw | ConvertFrom-Json)) {
+                        $type = Get-EventType -Record $record
+                        if ($type) {
+                            $eventTypes[$type] = 1 + $(if ($eventTypes.ContainsKey($type)) { $eventTypes[$type] } else { 0 })
+                        }
+                        foreach ($agent in Get-EventAgentValues -Record $record) {
+                            $agents[$agent] = $true
+                        }
+                        $writer.WriteLine(($record | ConvertTo-Json -Depth 32 -Compress))
+                        $eventCount++
+                    }
+                } catch {
+                    $parseErrors++
+                }
+                continue
+            }
+
+            foreach ($line in ($raw -split "\r?\n")) {
                 if ([string]::IsNullOrWhiteSpace($line)) {
                     continue
                 }

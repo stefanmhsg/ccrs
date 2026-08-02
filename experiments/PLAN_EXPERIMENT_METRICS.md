@@ -32,9 +32,12 @@ The work also consolidates experiment-related scripts, reports, run archives, an
 - [x] (2026-06-06) Reserved 82% of cycle-chart plot height for the 0-200 ms range and repositioned final datapoint labels away from the series lines.
 - [x] (2026-06-06) Added a zone-level report section before `Generated Artifacts`, split by signifier, stigmergy, mixed, construction site, and social zones.
 - [x] (2026-06-06) Differentiated total and zone optimal move counts by scenario version: `CcrsMazeV1` and `CcrsMazeV2`.
+- [x] (2026-08-02) Added dependency-free black-box PowerShell tests for manual import, structured JaCaMo and MASE parsing, report generation, artifacts, agent filtering, and repeatable regeneration.
 
 ## Surprises & Discoveries
 
+- Observation: The manual importer accepted `.json` MASE exports by filename but only parsed one JSON object per physical line.
+  Evidence: The black-box fixture supplied a valid JSON array and produced zero events with one parse error per formatted line. [import-manual-run.ps1](scripts/import-manual-run.ps1) now handles JSON arrays and line-oriented NDJSON/JSONL, and the test covers both formats.
 - Observation: The parser already supports structured `[METRIC]` lines through the same `key=value` parser used for `[CCRS-EVENT]`.
   Evidence: [parse-experiment-logs.ps1](scripts/parse-experiment-logs.ps1) includes `[METRIC]` in `ConvertFrom-KeyValueLine`.
 - Observation: There was no existing `PLAN_*.md` in `ccrs-bdi`, so this plan is the first executable plan for the experiment metrics work.
@@ -57,7 +60,7 @@ The work also consolidates experiment-related scripts, reports, run archives, an
 
 ## Outcomes & Retrospective
 
-Cycle-duration parsing, run-level cycle aggregates, the summary table, and SVG chart generation are implemented. Existing archived runs without `[METRIC] event=agent.cycle.location` markers report empty cycle values; new runs with the marker produce `cycle-durations.csv`, populated run-level averages, and `cycle-duration-comparison.svg`.
+Cycle-duration parsing, run-level cycle aggregates, the summary table, and SVG chart generation are implemented. Existing archived runs without `[METRIC] event=agent.cycle.location` markers report empty cycle values; new runs with the marker produce `cycle-durations.csv`, populated run-level averages, and `cycle-duration-comparison.svg`. A dependency-free black-box suite now verifies manual import, structured log and MASE parsing, report artifacts, agent filtering, cycle metrics, and repeatable generation without starting the experiment services.
 
 Move optimality reporting is implemented with scenario-specific `optimal_moves`, `actual_moves`, and `move_delta_from_optimal`. `CcrsMazeV1` uses total optimal moves `138`; `CcrsMazeV2` uses total optimal moves `116`. The summary also includes direct overruled decision counts grouped by `selected_type`; move-saving contribution remains reserved for future ablation runs.
 

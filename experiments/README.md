@@ -135,6 +135,19 @@ metadata so scenario-service logs do not enter the report.
 from those CSV files. It invokes the parser automatically so the CSV tables are
 refreshed before the Markdown report is written.
 
+## Test The Scripts
+
+Run the dependency-free black-box suite from the repository root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File experiments/tests/test-report-generation.ps1
+```
+
+[test-report-generation.ps1](tests/test-report-generation.ps1) creates temporary
+JaCaMo and MASE fixtures, exercises manual import and report generation through
+their public script entry points, verifies generated metrics and artifacts, and
+removes the fixtures afterward. It does not start JaCaMo, MASE, or an LLM.
+
 ## Generate The Report
 
 After a batch exists, generate the Markdown report and CSV/JSON tables:
