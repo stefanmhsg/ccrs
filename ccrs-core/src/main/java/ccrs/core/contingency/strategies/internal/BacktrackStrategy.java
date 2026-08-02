@@ -62,12 +62,11 @@ import ccrs.core.rdf.CcrsContext;
  * suppression when exploring different branches.</p>
  * 
  * <h2>Backtrack Path Computation</h2>
- * <p>Extracts navigation path from interaction history: sequence of unique requestUri values
+ * <p>Extracts navigation path from the interaction graph: sequence of unique requestUri values
  * showing steps from current location to checkpoint. Path excludes current location (only
  * includes steps to take). The first URI is therefore the immediate navigation target away
- * from the blocked current resource. Each URI appears at most once. Uses predecessor map
- * derived from chronological interaction transitions to build an implicit tree - no explicit
- * graph search required.</p>
+ * from the blocked current resource. Exhausted resources may be used as transit nodes, but
+ * the selected checkpoint must still have unexplored alternatives.</p>
  * 
  * <h2>Opportunistic CCRS Mental Notes (B2)</h2>
  * <p>Generates structured mental notes for integration with prioritization:</p>
@@ -204,6 +203,16 @@ public class BacktrackStrategy implements CcrsStrategy {
                 .sum();
         }
 
+        List<String> backtrackLinks(String resource) {
+            LinkedHashSet<String> links = new LinkedHashSet<>(outgoingLinks(resource));
+            outgoingLinksByResource.forEach((from, outgoing) -> {
+                if (!from.equals(resource) && outgoing.contains(resource)) {
+                    links.add(from);
+                }
+            });
+            return List.copyOf(links);
+        }
+
     }
 
     private record ConfidenceBreakdown(
@@ -269,23 +278,31 @@ public class BacktrackStrategy implements CcrsStrategy {
                 "No valid checkpoints with unexplored alternatives found");
         }
         
-        // STEP 5: Calculate observed-path backtrack distances
-        List<CheckpointCandidate> withDistances = validatedCheckpoints.stream()
-            .map(c -> new CheckpointCandidate(
+        // STEP 5: Calculate graph backtrack distances. Exhausted resources are
+        // allowed as transit nodes; only the destination checkpoint needs an
+        // unexplored alternative.
+        Map<String, List<String>> backtrackPathsByCheckpoint = new HashMap<>();
+        List<CheckpointCandidate> withDistances = new ArrayList<>();
+        for (CheckpointCandidate c : validatedCheckpoints) {
+            Optional<List<String>> backtrackPath = computeBacktrackPath(current, c.uri(), graph);
+            if (backtrackPath.isEmpty()) {
+                continue;
+            }
+            backtrackPathsByCheckpoint.put(c.uri(), backtrackPath.get());
+            withDistances.add(new CheckpointCandidate(
                 c.uri(), c.source(), c.outgoingLinks(), c.unexploredAlternatives(),
                 c.exhaustedAlternatives(), c.validationScore(), c.recencyTimestamp(),
-                calculateBacktrackDistance(current, c.uri(), graph)))
-            .filter(c -> c.backtrackDistance() < Integer.MAX_VALUE)
-            .toList();
+                backtrackPath.get().size()));
+        }
         
-        logger.info(String.format("[Backtrack] %d checkpoints reachable on the observed backtrack path",
+        logger.info(String.format("[Backtrack] %d checkpoints reachable through known graph transit",
             withDistances.size()));
         
         if (withDistances.isEmpty()) {
-            logger.warning("[Backtrack] All checkpoints exceed maximum graph distance");
+            logger.warning("[Backtrack] No validated checkpoints are reachable through known graph transit");
             return StrategyResult.noHelp(ID,
                 StrategyResult.NoHelpReason.PRECONDITION_MISSING,
-                "All checkpoints exceed maximum graph distance");
+                "No validated checkpoints are reachable through known graph transit");
         }
         
         // STEP 6: Rank checkpoints
@@ -298,7 +315,11 @@ public class BacktrackStrategy implements CcrsStrategy {
             bestCheckpoint.validationScore()));
         
         // STEP 7: Compute backtrack path from current to checkpoint
-        List<String> backtrackPath = computeBacktrackPath(current, bestCheckpoint.uri(), graph);
+        List<String> backtrackPath = backtrackPathsByCheckpoint.get(bestCheckpoint.uri());
+        if (backtrackPath == null) {
+            backtrackPath = computeBacktrackPath(current, bestCheckpoint.uri(), graph)
+                .orElse(List.of(bestCheckpoint.uri()));
+        }
         logger.info(String.format("[Backtrack] Path length: %d steps", backtrackPath.size()));
         
         // STEP 8: Build result with rich metadata
@@ -543,66 +564,57 @@ public class BacktrackStrategy implements CcrsStrategy {
     }
     
     /**
-     * Calculate backtrack distance: number of predecessor steps from current resource
-     * back to checkpoint in the observed interaction path.
-     */
-    private int calculateBacktrackDistance(String currentResource, String checkpointUri,
-                                        InteractionGraph graph) {
-        if (checkpointUri.equals(currentResource)) {
-            return 0;
-        }
-
-        int distance = 0;
-        Set<String> seen = new HashSet<>();
-        seen.add(currentResource);
-        String node = graph.predecessors().get(currentResource);
-
-        while (node != null && seen.add(node)) {
-            distance++;
-            if (node.equals(checkpointUri)) {
-                return distance;
-            }
-            node = graph.predecessors().get(node);
-        }
-
-        return Integer.MAX_VALUE;
-    }
-    
-    /**
      * Compute backtrack path: sequence of unique resources from current location to checkpoint.
      * Returns list of navigation steps (excludes current location).
      * Each URI appears at most once. Path length is finite and ends at checkpoint.
      * 
-     * Uses predecessor map derived from successful interactions to build implicit tree.
+     * Uses the known interaction graph so exhausted resources can remain valid transit nodes.
      */
-    private List<String> computeBacktrackPath(String current, String checkpoint, InteractionGraph graph) {
+    private Optional<List<String>> computeBacktrackPath(String current, String checkpoint, InteractionGraph graph) {
         if (current.equals(checkpoint)) {
-            return List.of(); // Already at checkpoint, no steps needed
+            return Optional.of(List.of()); // Already at checkpoint, no steps needed
         }
 
-        // Trace path from current back to checkpoint
-        List<String> path = new ArrayList<>();
+        Deque<String> queue = new ArrayDeque<>();
+        Map<String, String> previous = new HashMap<>();
         Set<String> seen = new HashSet<>();
-        
-        // Start with current but DON'T add it to path (it's where we are, not where we're going)
+
+        queue.add(current);
         seen.add(current);
-        String node = graph.predecessors().get(current);
-        
-        while (node != null && !seen.contains(node)) {
-            path.add(node);
-            seen.add(node);
-            
-            if (node.equals(checkpoint)) {
-                return path; // Found valid path
+
+        while (!queue.isEmpty()) {
+            String node = queue.removeFirst();
+            for (String next : graph.backtrackLinks(node)) {
+                if (!isKnownBacktrackTransit(next, checkpoint, graph) || !seen.add(next)) {
+                    continue;
+                }
+                previous.put(next, node);
+                if (next.equals(checkpoint)) {
+                    return Optional.of(reconstructPath(current, checkpoint, previous));
+                }
+                queue.addLast(next);
             }
-            
-            node = graph.predecessors().get(node);
         }
-        
-        // No path found - fallback to direct jump
-        logger.warning(String.format("[Backtrack] No predecessor path from %s to %s, using direct jump", 
+
+        logger.fine(String.format("[Backtrack] No known graph path from %s to %s",
             current, checkpoint));
-        return List.of(checkpoint);
+        return Optional.empty();
+    }
+
+    private boolean isKnownBacktrackTransit(String uri, String checkpoint, InteractionGraph graph) {
+        return uri.equals(checkpoint) || graph.successfulResources().contains(uri);
+    }
+
+    private List<String> reconstructPath(String current, String checkpoint, Map<String, String> previous) {
+        LinkedList<String> path = new LinkedList<>();
+        String node = checkpoint;
+
+        while (node != null && !node.equals(current)) {
+            path.addFirst(node);
+            node = previous.get(node);
+        }
+
+        return path;
     }
     
     /**
