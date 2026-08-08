@@ -499,7 +499,7 @@ ccrs.jacamo.jason.contingency.evaluate(
 );
 ```
 
-The result is a list of `suggestion(...)` terms. Consumers should inspect the proposed action and confidence. A `stop` action is advice to consider ending the run, not an automatic termination command. See the [JaCaMo contingency README.md](../../../../../../../ccrs-jacamo/src/main/java/ccrs/jacamo/jason/contingency/README.md) and [examples.asl](../../../../../../../ccrs-jacamo/src/main/resources/ccrs/jacamo/jason/contingency/examples.asl) for the adapter contract and complete handlers.
+The result is a list of `suggestion(...)` terms. Consumers should inspect the proposed action and confidence. A `stop` action is advice to consider ending the run, not an automatic termination command. See the [JaCaMo contingency README.md](../../../../../../../ccrs-jacamo/src/main/java/ccrs/jacamo/jason/contingency/README.md) for the adapter contract. The current [examples.asl](../../../../../../../ccrs-jacamo/src/main/resources/ccrs/jacamo/jason/contingency/examples.asl) contains application-owned handlers and will move with the BDI application during physical separation.
 
 ## Configuration
 

@@ -2,7 +2,7 @@
 
 This directory contains the social contingency strategy `ConsultationStrategy`.
 
-The strategy represents the social escalation layer in contingency CCRS: if local handling is no longer sufficient, the agent may consult another agent through a pluggable consultation channel. In the current implementation that channel is the A2A capability documented in [../../../../capabilities/a2a/README.md](../../../../capabilities/a2a/README.md).
+The strategy represents the social escalation layer in contingency CCRS: if local handling is no longer sufficient, the agent may consult another agent through a pluggable consultation channel. In the current implementation that channel is the A2A capability documented in [ccrs-a2a README.md](../../../../../../../../../ccrs-a2a/README.md).
 
 ## Purpose
 
@@ -14,6 +14,22 @@ The consultation strategy is intended to keep CCRS agent- and task-agnostic whil
 - and how to turn an external answer into a usable CCRS suggestion.
 
 The concrete communication mechanics are delegated to a `ConsultationChannel` implementation.
+
+## Current boundary and accepted simplification
+
+The channel contract is provider-neutral at the Java dependency boundary, but
+the current strategy behavior is deliberately shaped by the working A2A/RDF
+scenario. Peer discovery uses the maze `contains` predicate and recent
+interaction state, while successful Turtle responses are projected into a
+candidate `post` action through a literal-value heuristic. These rules are a
+documented simplification of the current library contract, not an accidental
+dependency on A2A SDK classes: `ccrs-core` still has no A2A SDK dependency.
+
+Physical library separation preserves this behavior and covers it with
+characterization tests. It does not introduce target-resolver, request-builder,
+or response-projector extension interfaces. Those collaborators should be
+reconsidered only when a concrete second consultation protocol or discovery
+model demonstrates that the present rules are insufficient.
 
 ## Design Decisions
 
@@ -168,7 +184,11 @@ The current implementation is intentionally conservative and incomplete in sever
 - Consultation result projection currently prefers literal extraction, especially `#keyValue`.
 - The derived body is Turtle-oriented because that fits the current environment.
 
-These are acceptable simplifications for the current proof-of-concept phase because they keep the social strategy understandable while already demonstrating semantic multi-agent consultation.
+These are accepted simplifications of the current library behavior. They keep
+the social strategy understandable while demonstrating semantic multi-agent
+consultation, and they are not blockers for publishing or physically separating
+the modules. Consumers should treat the discovery and projection rules as
+documented behavior rather than as a universal consultation model.
 
 ## Relationship to Evaluation Policy
 
@@ -184,4 +204,4 @@ This is important when testing because the consultation implementation may be co
 ## Files of Interest
 
 - [ConsultationStrategy.java](./ConsultationStrategy.java)
-- [A2A capability README](../../../../capabilities/a2a/README.md)
+- [ccrs-a2a README.md](../../../../../../../../../ccrs-a2a/README.md)

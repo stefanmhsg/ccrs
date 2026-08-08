@@ -21,6 +21,18 @@ allprojects {
     version = '0.1.0-SNAPSHOT'
     group = 'io.github.stefanmhsg.ccrs'
 
+    plugins.withId('java') {
+        java {
+            toolchain {
+                languageVersion = JavaLanguageVersion.of(21)
+            }
+        }
+
+        tasks.withType(JavaCompile).configureEach {
+            options.release = 21
+        }
+    }
+
     repositories {
         maven { url = uri("https://raw.githubusercontent.com/jacamo-lang/mvn-repo/master") }
         maven { url = uri("https://repo.gradle.org/gradle/libs-releases") }

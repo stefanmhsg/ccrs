@@ -49,6 +49,33 @@ user app -> all selected modules
 `ccrs-jacamo` must not import Hypermedea, LangChain4j, A2A, or dotenv classes.
 Those are optional modules.
 
+## Standalone Acceptance Contract
+
+The physical migration is executed through
+[PLAN_CCRS_PHYSICAL_SEPARATION.md](PLAN_CCRS_PHYSICAL_SEPARATION.md). A CCRS
+module is standalone only when all of the following are true:
+
+- its source directory is a complete Gradle build with its own settings,
+  wrapper, artifact identity, repositories, Java configuration, tests, and
+  publication configuration;
+- `build`, `test`, and `publishToMavenLocal` succeed when invoked from that
+  directory without reading the BDI application build or sibling CCRS source
+  directories;
+- dependencies on other CCRS modules use published Maven coordinates rather
+  than Gradle project paths;
+- a clean consumer compiles and runs against the published coordinate without
+  sibling source substitution or Maven Local artifacts; and
+- its POM, Gradle module metadata, runtime jar, sources jar, Javadocs jar, and
+  service descriptors accurately represent the supported public and runtime
+  contracts.
+
+All Java library and application projects use a Java 21 toolchain and compile
+with `--release 21`. One Git repository per module is not required: independent
+source builds plus clean coordinate-based consumption define the physical
+boundary. The `.jcm` files, AgentSpeak programs, environment integration, logs,
+and experiments remain application-owned even while the source trees are still
+co-located.
+
 ## Current Important Decisions
 
 ### JaCaMo Is Not Just Jason
@@ -148,11 +175,14 @@ ccrs-jacamo/src/main/java/ccrs/jacamo/jason/opportunistic/prioritize.java
 ccrs-jacamo/src/main/java/ccrs/jacamo/jason/contingency/JasonCcrsContext.java
 ccrs-jacamo/src/main/java/ccrs/jacamo/jason/contingency/InteractionHistoryProvider.java
 ccrs-jacamo/src/main/java/ccrs/jacamo/jason/contingency/evaluate.java
-ccrs-jacamo/src/main/resources/ccrs/jacamo/jason/contingency/examples.asl
 ```
 
-Question for later: `examples.asl` may belong in the example app instead of
-the library module.
+The current
+[`examples.asl`](ccrs-jacamo/src/main/resources/ccrs/jacamo/jason/contingency/examples.asl)
+file is application-owned example material temporarily stored in the module.
+It is not part of the supported `ccrs-jacamo` runtime contract and will move
+with the BDI application in WP8 of
+[PLAN_CCRS_PHYSICAL_SEPARATION.md](PLAN_CCRS_PHYSICAL_SEPARATION.md).
 
 Must not move into this module:
 
@@ -234,10 +264,12 @@ not depend on `ccrs-langchain4j` for optional `.env` support.
 The A2A module should stay a consultation-channel adapter. It may resolve agent
 cards, invoke the A2A SDK, extract returned payload text and metadata, and
 register an A2A-backed `ConsultationChannel` through `ServiceLoader`. It should
-not own generic social escalation policy. The current proof-of-concept still
-leaves some A2A-shaped target discovery and RDF projection behavior inside
-`ConsultationStrategy`; that is tracked under the ConsultationStrategy cleanup
-below.
+not own generic social escalation policy. The current implementation keeps
+some A2A-shaped target discovery and RDF projection behavior inside
+`ConsultationStrategy`. This is an accepted, documented simplification for the
+current library contract, not a blocker for physical separation. It must remain
+covered by characterization tests and may be redesigned later only when a
+concrete non-A2A consultation use case requires a more general extension point.
 
 ### User Application Repository
 
@@ -338,8 +370,10 @@ provider registration.
 
 Concerns:
 
-- It lives under `core/contingency/strategies/internal`, but functionally it is
-  an LLM capability.
+- It lives under `core/contingency/strategies/internal` because `internal`
+  groups strategies that derive guidance through the agent's own reasoning and
+  retained context. The package name is conceptual and does not mean that the
+  public strategy type is hidden from library consumers.
 - Prompt-context formatting is embedded in the strategy.
 - UI namespace filtering has a default, but can be changed through
   [`PredictionLlmStrategyOptions.java`](ccrs-core/src/main/java/ccrs/core/contingency/options/PredictionLlmStrategyOptions.java).
@@ -357,9 +391,9 @@ Todos:
 
 ### ConsultationStrategy
 
-Current status: highest-priority cleanup before library release.
+Current status: library-usable with a documented, A2A-shaped simplification.
 
-Concerns:
+Known limitations:
 
 - It exposes a generic `ConsultationChannel`, but contains domain and A2A
   discovery assumptions:
@@ -368,19 +402,17 @@ Concerns:
   - candidate discovery from recent interactions,
   - Turtle artifact projection into a POST body.
 - Jena/Turtle projection logic is embedded in the core strategy.
-- The README currently documents the current A2A proof of concept more than a
-  reusable strategy contract.
+- The generic channel interface does not yet imply protocol-neutral target
+  discovery or response projection.
 
 Todos:
 
-- Extract `ConsultationTargetResolver`.
-- Extract `ConsultationRequestBuilder`.
-- Extract `ConsultationResponseProjector`.
-- Move A2A-specific target discovery/projection into `ccrs-a2a`, unless it is
-  intentionally generic RDF consultation behavior.
 - Make fallback confidence configurable.
-- Add tests for no-channel, no-history, candidate discovery, response mapping,
-  projection, and failed consultation.
+- Preserve characterization tests for no-channel, no-history, candidate
+  discovery, response mapping, projection, and failed consultation.
+- Keep the simplification explicit in the core social-strategy and `ccrs-a2a`
+  documentation. Revisit collaborator extraction only when a concrete second
+  protocol or discovery model needs it.
 
 ## Extension Policy
 

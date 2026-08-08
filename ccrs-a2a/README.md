@@ -72,9 +72,12 @@ ccrs-core does not depend on the A2A SDK.
 
 Current boundary note: the A2A SDK dependency is isolated in `ccrs-a2a`.
 However, `ConsultationStrategy` still contains the current proof-of-concept
-target-discovery and RDF projection heuristics. Before a stable library release,
-those pieces should either become explicit core extension points or move behind
-provider-owned collaborators in this module.
+target-discovery and RDF projection heuristics. This is an accepted, documented
+simplification of the current library contract and is not a blocker for
+physical separation or publication. The current behavior remains covered by
+characterization tests. Resolver, request-builder, or response-projector
+extension points should be introduced only when a concrete second protocol or
+discovery model requires them.
 
 ## Purpose
 

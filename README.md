@@ -47,6 +47,13 @@ implementation project(':ccrs-a2a')
 This means changes made inside a `ccrs-*` module are immediately used by the
 agents in this repository when running the local JaCaMo application.
 
+All current Java projects use a Java 21 Gradle toolchain and compile with
+`--release 21`. Install a Java 21 JDK for local builds; Gradle toolchain
+resolution may provision one when the environment permits downloads. The
+standalone-module acceptance contract and migration sequence are documented in
+[CCRS_LIBRARY.md](CCRS_LIBRARY.md) and
+[PLAN_CCRS_PHYSICAL_SEPARATION.md](PLAN_CCRS_PHYSICAL_SEPARATION.md).
+
 Compile the app and all CCRS modules:
 
 ```powershell
@@ -124,7 +131,7 @@ gradle run "-Pjcm=dfs_baseline.jcm"
 
 ##### DFS Baseline Agent extended with opportunistic CCRS:
 
-* [dfs_opportunistic_ccrs.asl](src/agt/dfs_opportunistic_ccrs.asl) extends the DFS baseline agent with opportunistic CCRS features. It defaults to DFS but prioritizes options at every step based on opportunistic CCRS outcomes.
+* [dfs_opportunistic_ccrs.asl](src/agt/agt_archive/dfs_opportunistic_ccrs.asl) extends the DFS baseline agent with opportunistic CCRS features. It defaults to DFS but prioritizes options at every step based on opportunistic CCRS outcomes.
 
 ```powershell
 gradle run "-Pjcm=dfs_opportunistic_ccrs.jcm"
