@@ -2,6 +2,9 @@
 
 This module implements **Opportunistic Course Check and Revision Strategies (CCRS)** over RDF perceptions. The core is agent-agnostic: it receives `RdfTriple` values, detects known CCRS patterns, can discover new CCRS vocabulary embedded in incoming RDF batches, and returns `OpportunisticResult` objects for platform adapters to inject into an agent's belief base.
 
+Build, publication, Java version, and repository instructions are documented in
+the module-level [ccrs-core README.md](../../../../../../README.md).
+
 ## Module Overview
 
 ```text

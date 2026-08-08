@@ -5,6 +5,25 @@ capability used by contingency CCRS. It depends on `ccrs-core`, contributes
 `A2aConsultationStrategyProvider` through Java `ServiceLoader`, and can be
 omitted from applications that do not need A2A-backed consultation.
 
+## Standalone Build
+
+This directory is a complete Java 21 Gradle build. It resolves `ccrs-core` by
+Maven coordinate and publishes
+`io.github.stefanmhsg.ccrs:ccrs-a2a:0.1.0-SNAPSHOT`.
+
+With GitHub Packages credentials configured in the user-level Gradle
+properties file, run:
+
+```powershell
+.\gradlew.bat --refresh-dependencies build
+.\gradlew.bat publishToMavenLocal
+```
+
+Use `-PccrsRepositoryUrl=S:/path/to/ccrs-staging-repo` to select an explicit
+isolated Maven repository containing the aligned core artifact. Publish a
+snapshot with `publishMavenJavaPublicationToGitHubPackagesRepository`. The
+build does not read the BDI root or the LangChain4j capability module.
+
 The main entry point is `A2aConsultationChannel`, which implements the generic
 `ConsultationStrategy.ConsultationChannel` contract and translates a CCRS
 consultation request into an A2A SDK interaction.

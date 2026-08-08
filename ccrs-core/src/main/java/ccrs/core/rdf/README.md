@@ -2,6 +2,9 @@
 
 This package contains the RDF-facing context contract used by Contingency CCRS.
 
+Build, publication, Java version, and repository instructions are documented in
+the module-level [ccrs-core README.md](../../../../../../README.md).
+
 ## Purpose
 
 `CcrsContext` is the bridge between core CCRS logic and a concrete agent/runtime adapter.

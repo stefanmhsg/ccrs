@@ -2,6 +2,9 @@
 
 Contingency Course Check and Revision Strategies (CCRS) provide runtime guidance when an agent cannot confidently continue its normal plan. A request describes observable evidence; strategies decide their own applicability from that evidence and the run-local context history.
 
+Build, publication, Java version, and repository instructions are documented in
+the module-level [ccrs-core README.md](../../../../../../README.md).
+
 ## Module overview
 
 ```text
@@ -499,7 +502,7 @@ ccrs.jacamo.jason.contingency.evaluate(
 );
 ```
 
-The result is a list of `suggestion(...)` terms. Consumers should inspect the proposed action and confidence. A `stop` action is advice to consider ending the run, not an automatic termination command. See the [JaCaMo contingency README.md](../../../../../../../ccrs-jacamo/src/main/java/ccrs/jacamo/jason/contingency/README.md) for the adapter contract. The current [examples.asl](../../../../../../../ccrs-jacamo/src/main/resources/ccrs/jacamo/jason/contingency/examples.asl) contains application-owned handlers and will move with the BDI application during physical separation.
+The result is a list of `suggestion(...)` terms. Consumers should inspect the proposed action and confidence. A `stop` action is advice to consider ending the run, not an automatic termination command. See the [JaCaMo contingency README.md](../../../../../../../ccrs-jacamo/src/main/java/ccrs/jacamo/jason/contingency/README.md) for the adapter contract. The application-owned [examples.asl](../../../../../../../src/agt/examples/contingency/examples.asl) contains complete handler patterns and is not packaged in the JaCaMo library.
 
 ## Configuration
 

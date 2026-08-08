@@ -3,8 +3,8 @@
 This is a small standalone Gradle project that consumes the CCRS modules as
 published Maven libraries. It is intentionally not included in the root
 [settings.gradle](../../settings.gradle), so it behaves like a separate user
-repository. It can resolve from either the repository-local Maven directory or
-GitHub Packages without using Maven Local.
+repository. It can resolve from either an explicitly selected staging
+repository or GitHub Packages, without using Maven Local.
 
 ## What It Shows
 
@@ -20,28 +20,51 @@ GitHub Packages without using Maven Local.
 - Resolves the sources jar, Javadocs jar, POM, and Gradle module metadata for
   every CCRS coordinate as part of `check` and `build`.
 
-## Run It From The Repository-Local Maven Directory
+## Run It From An Isolated Staging Repository
 
-First publish the CCRS modules to the repository-local Maven directory from
-the repository root:
-
-```powershell
-./gradlew :ccrs-core:publishMavenJavaPublicationToCcrsLocalRepository `
-  :ccrs-jacamo:publishMavenJavaPublicationToCcrsLocalRepository `
-  :ccrs-hypermedea:publishMavenJavaPublicationToCcrsLocalRepository `
-  :ccrs-langchain4j:publishMavenJavaPublicationToCcrsLocalRepository `
-  :ccrs-a2a:publishMavenJavaPublicationToCcrsLocalRepository
-```
-
-Then run this consumer project:
+From the repository root, select one ignored staging directory and publish the
+standalone modules to it in dependency order:
 
 ```powershell
-./gradlew -p examples/ccrs-library-consumer run
+$stagingRepository = "$PWD/.gradle/ccrs-staging-repo"
+
+.\ccrs-core\gradlew.bat -p ccrs-core `
+  "-PccrsRepositoryUrl=$stagingRepository" `
+  clean build publishMavenJavaPublicationToCcrsStagingRepository
+
+.\ccrs-jacamo\gradlew.bat -p ccrs-jacamo `
+  "-PccrsRepositoryUrl=$stagingRepository" `
+  --refresh-dependencies clean build `
+  publishMavenJavaPublicationToCcrsStagingRepository
+
+.\ccrs-langchain4j\gradlew.bat -p ccrs-langchain4j `
+  "-PccrsRepositoryUrl=$stagingRepository" `
+  --refresh-dependencies clean build `
+  publishMavenJavaPublicationToCcrsStagingRepository
+
+.\ccrs-a2a\gradlew.bat -p ccrs-a2a `
+  "-PccrsRepositoryUrl=$stagingRepository" `
+  --refresh-dependencies clean build `
+  publishMavenJavaPublicationToCcrsStagingRepository
+
+.\ccrs-hypermedea\gradlew.bat -p ccrs-hypermedea `
+  "-PccrsRepositoryUrl=$stagingRepository" `
+  --refresh-dependencies clean build `
+  publishMavenJavaPublicationToCcrsStagingRepository
 ```
 
-The project resolves CCRS only from
-[build/local-maven-repo](../../build/local-maven-repo); it does not declare
-Maven Local, so this check cannot select an older local snapshot.
+Then resolve only that repository and run this consumer:
+
+```powershell
+.\gradlew.bat -p examples/ccrs-library-consumer `
+  "-PccrsRepositoryUrl=$stagingRepository" `
+  --refresh-dependencies clean build run
+```
+
+The staging repository is under the ignored root `.gradle` directory so root
+`clean` does not delete it before the application or consumer resolves the
+artifacts. The project does not declare Maven Local, so this check cannot
+select an older local snapshot.
 
 ## Run It From GitHub Packages
 
@@ -60,8 +83,7 @@ only the remote CCRS snapshots, verify every published artifact kind, and run
 the example with:
 
 ```powershell
-./gradlew -p examples/ccrs-library-consumer `
-  -PccrsRepository=github `
+.\gradlew.bat -p examples/ccrs-library-consumer `
   --refresh-dependencies `
   clean build run
 ```

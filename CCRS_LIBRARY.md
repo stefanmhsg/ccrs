@@ -7,9 +7,8 @@ consistent.
 
 ## Target State
 
-The current repository is still a JaCaMo application that contains CCRS code.
-The intended library shape is a set of small modules with one-directional
-dependencies:
+The repository now contains a JaCaMo application and five physically standalone
+CCRS builds. The modules have one-directional Maven-coordinate dependencies:
 
 ```text
 ccrs-core
@@ -106,11 +105,11 @@ dependencies.
 ## GitHub Packages Snapshot Distribution
 
 The initial remote Maven registry is
-`https://maven.pkg.github.com/stefanmhsg/ccrs-bdi`. The root
-[build.gradle](build.gradle) retains Maven Local and the repository-local Maven
-directory, adds a `GitHubPackages` publication repository, and provides the
-`publishCcrsSnapshotsToGitHubPackages` aggregate task for all five aligned
-modules. That aggregate rejects versions without the `-SNAPSHOT` suffix.
+`https://maven.pkg.github.com/stefanmhsg/ccrs-bdi`. Each module owns its Gradle
+settings, Java 21 build, Maven publication, snapshot guard, and Gradle wrapper.
+There is deliberately no root aggregate publication task: publish each module
+through its own wrapper in dependency order. The root application resolves CCRS
+only through Maven coordinates.
 
 Local publishing and consumption read `gpr.user` and `gpr.key` from the
 user-level Gradle properties file. GitHub Actions falls back to `GITHUB_ACTOR`
@@ -121,11 +120,12 @@ personal access token with `read:packages`; local publication also needs
 
 The explicitly triggered
 [Publish CCRS snapshots workflow](.github/workflows/publish-ccrs-snapshots.yml)
-uses `contents: read` and `packages: write`. It builds, tests, generates
-Javadocs, publishes the modules, and then starts a separate consumer job with a
-fresh Gradle user home. The
-[CCRS library consumer](examples/ccrs-library-consumer/README.md) selects the
-remote repository with `-PccrsRepository=github`; its `build` resolves all five
+uses `contents: read` and `packages: write`. It invokes the five independent
+wrappers in dependency order, first stages and verifies the complete graph, then
+publishes the modules and starts a separate consumer job with a fresh Gradle
+user home. The
+[CCRS library consumer](examples/ccrs-library-consumer/README.md) uses GitHub
+Packages by default or an explicit `ccrsRepositoryUrl`; its `build` resolves all five
 runtime jars, sources jars, Javadocs jars, POMs, and Gradle module metadata and
 its `run` verifies the public LangChain4j API and service providers. Normal
 pull-request and branch builds never publish.
@@ -231,12 +231,10 @@ ccrs-jacamo/src/main/java/ccrs/jacamo/jason/contingency/InteractionHistoryProvid
 ccrs-jacamo/src/main/java/ccrs/jacamo/jason/contingency/evaluate.java
 ```
 
-The current
-[`examples.asl`](ccrs-jacamo/src/main/resources/ccrs/jacamo/jason/contingency/examples.asl)
-file is application-owned example material temporarily stored in the module.
-It is not part of the supported `ccrs-jacamo` runtime contract and will move
-with the BDI application in WP8 of
-[PLAN_CCRS_PHYSICAL_SEPARATION.md](PLAN_CCRS_PHYSICAL_SEPARATION.md).
+The
+[`examples.asl`](src/agt/examples/contingency/examples.asl) file is
+application-owned example material. It is not packaged in `ccrs-jacamo` and is
+not part of that module's supported runtime contract.
 
 Must not move into this module:
 
@@ -513,60 +511,44 @@ ins have explicit protected hooks. Either make a built-in strategy final and
 configurable, or intentionally expose protected methods as stable extension
 points. Avoid accidental subclassing contracts.
 
-## Build Split Todos
+## Standalone Build State
 
-Completed:
-
-```text
-:ccrs-core
-:ccrs-jacamo
-:ccrs-hypermedea
-:ccrs-langchain4j
-:ccrs-a2a
-root project as the user application
-```
-
-- `settings.gradle` includes the CCRS modules.
-- CCRS Java sources now live in module-local `src/main/java`.
-- CCRS resources and ServiceLoader files now live in module-local
-  `src/main/resources`.
-- The root project remains the concrete JaCaMo application and depends on the
-  selected CCRS modules.
-- `ccrs-*` modules are configured as Maven publications in
-  [build.gradle](build.gradle) under the group
-  `io.github.stefanmhsg.ccrs` with version `0.1.0-SNAPSHOT`.
-- The root JaCaMo application is not configured as a Maven publication.
-- Local library publishing works through:
+Each library directory is now a complete Gradle build:
 
 ```text
-./gradlew :ccrs-core:publishToMavenLocal \
-  :ccrs-jacamo:publishToMavenLocal \
-  :ccrs-hypermedea:publishToMavenLocal \
-  :ccrs-langchain4j:publishToMavenLocal \
-  :ccrs-a2a:publishToMavenLocal
+ccrs-core
+ccrs-jacamo
+ccrs-hypermedea
+ccrs-langchain4j
+ccrs-a2a
 ```
 
-- A clean file-based local Maven repository for smoke tests is available at
-  `build/local-maven-repo` through each module's
-  `publishMavenJavaPublicationToCcrsLocalRepository` task.
-- [CCRS library consumer README.md](examples/ccrs-library-consumer/README.md)
-  is a standalone get-started example that consumes
-  `io.github.stefanmhsg.ccrs:ccrs-core` as a Maven dependency.
+Every directory contains its own `settings.gradle`, `build.gradle`, wrapper,
+sources, resources, tests, and Maven publication. Library-to-library edges use
+`io.github.stefanmhsg.ccrs` coordinates; no build uses Gradle project
+dependencies. The root remains the concrete JaCaMo application, has no included
+CCRS projects, and consumes the same published coordinates as an external app.
 
-Remaining:
+For isolated local verification, publish into a staging repository outside the
+root `build` directory, because the application `clean` task removes that
+directory. Pass the staging path explicitly as `-PccrsRepositoryUrl=...` to
+each downstream build. See the
+[consumer instructions](examples/ccrs-library-consumer/README.md) for the full
+dependency-order command sequence.
 
-1. Keep the remaining package names stable during the first Gradle split unless
+Remaining library work is semantic and test hardening rather than build
+separation:
+
+1. Keep the remaining package names stable during the first release unless
    there is a concrete adapter boundary reason to change them. The Hypermedea
-   implementation has already moved to `ccrs.hypermedea`; future compatibility
-   concerns should be handled with wrappers, not by re-nesting it under
-   `ccrs.jacamo`.
+   implementation lives in `ccrs.hypermedea`; future compatibility concerns
+   should be handled with wrappers, not by re-nesting it under `ccrs.jacamo`.
 
-2. Keep `.jcm` and `.asl` files owned by the user application. If the app is
-   moved into a dedicated Gradle subproject later, move them there explicitly.
-   Otherwise configure the existing root project as the application that depends
-   on the extracted CCRS modules.
+2. Keep `.jcm` and `.asl` files owned by the user application. The contingency
+   quick-reference example now lives at
+   [`src/agt/examples/contingency/examples.asl`](src/agt/examples/contingency/examples.asl).
 
-3. Add module-level tests:
+3. Continue strengthening module-level tests:
 
 - `ccrs-core`: RDF vocabulary, opportunistic matching, strategy registry,
   selection policy, built-in strategies.
@@ -609,7 +591,7 @@ is available, follow this checklist:
   root source sets, or direct dependencies that no longer exist.
 - Remove or rewrite stale docs rather than preserving contradictory guidance.
 
-Current docs that likely need attention during the split:
+Documentation maintained as part of the split:
 
 ```text
 README.md
@@ -621,10 +603,10 @@ ccrs-core/src/main/java/ccrs/core/contingency/strategies/social/README.md
 ccrs-langchain4j/README.md
 ccrs-a2a/README.md
 ccrs-hypermedea/README.md
-ccrs-jacamo/src/main/resources/ccrs/jacamo/jason/contingency/examples.asl
+src/agt/examples/contingency/examples.asl
 ```
 
-## Current Intermediate State
+## Current State
 
 Implemented toward the split:
 
@@ -642,12 +624,14 @@ Implemented toward the split:
 - Hypermedea code moved out of the JaCaMo package path into
   `ccrs-hypermedea/src/main/java/ccrs/hypermedea` with package
   `ccrs.hypermedea`
-- Gradle subprojects exist for `ccrs-core`, `ccrs-jacamo`,
+- five standalone Gradle builds exist for `ccrs-core`, `ccrs-jacamo`,
   `ccrs-hypermedea`, `ccrs-langchain4j`, and `ccrs-a2a`
+- the BDI application resolves all five through Maven coordinates and owns the
+  `.jcm`, `.asl`, environment, logging, and experiment content
 
 Known remaining coupling:
 
-- The root application currently depends on all CCRS modules. Later app
+- The root application currently depends on all five CCRS packages. Later app
   profiles could depend only on the selected capabilities.
 - Some strategy implementations still contain app/domain assumptions.
 - The root `testJaCaMo` task launches, but the AgentSpeak test suite still

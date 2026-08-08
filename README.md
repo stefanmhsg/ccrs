@@ -7,8 +7,8 @@ This repository currently has two roles:
   [ccrs-hypermedea](ccrs-hypermedea),
   [ccrs-langchain4j](ccrs-langchain4j), and [ccrs-a2a](ccrs-a2a).
 - It is also a concrete JaCaMo/Jason user project with agents and `.jcm`
-  configurations that use those modules directly through Gradle project
-  dependencies in [build.gradle](build.gradle).
+  configurations that consume those modules through published Maven
+  coordinates in [build.gradle](build.gradle).
 
 The reusable libraries are the `ccrs-*` modules. The root project, `.jcm`
 files, `.asl` agents, logs, local environment files, and experiments are
@@ -32,20 +32,38 @@ application code and are not intended to be published as libraries.
 
 ## Working On The CCRS Libraries
 
-The modules are included in [settings.gradle](settings.gradle), so local
-development uses normal Gradle project dependencies. The root JaCaMo
-application depends on the modules directly:
+Each `ccrs-*` directory is a complete Gradle build with its own
+`settings.gradle`, wrapper, Java 21 configuration, tests, and publication.
+There are no CCRS subprojects in the root [settings.gradle](settings.gradle)
+and no Gradle `project(...)` dependencies between modules.
 
-```gradle
-implementation project(':ccrs-core')
-implementation project(':ccrs-jacamo')
-implementation project(':ccrs-hypermedea')
-implementation project(':ccrs-langchain4j')
-implementation project(':ccrs-a2a')
+Open the module directory itself as a Gradle project in an IDE. Until the
+optional composite workspace is added, importing only the repository root
+shows CCRS as external libraries rather than editable source projects.
+
+Build one module from its directory:
+
+```powershell
+cd ccrs-core
+.\gradlew.bat build
+.\gradlew.bat publishToMavenLocal
 ```
 
-This means changes made inside a `ccrs-*` module are immediately used by the
-agents in this repository when running the local JaCaMo application.
+Dependent modules such as `ccrs-jacamo` resolve CCRS dependencies from GitHub
+Packages by default. They can instead use one explicitly selected staging
+repository by passing `-PccrsRepositoryUrl=S:/path/to/ccrs-staging-repo`.
+This changes Maven resolution, not the coordinate declarations, and never
+falls back to sibling source or Maven Local automatically.
+
+The root JaCaMo application consumes aligned coordinates:
+
+```gradle
+implementation 'io.github.stefanmhsg.ccrs:ccrs-core:0.1.0-SNAPSHOT'
+implementation 'io.github.stefanmhsg.ccrs:ccrs-jacamo:0.1.0-SNAPSHOT'
+implementation 'io.github.stefanmhsg.ccrs:ccrs-hypermedea:0.1.0-SNAPSHOT'
+implementation 'io.github.stefanmhsg.ccrs:ccrs-langchain4j:0.1.0-SNAPSHOT'
+implementation 'io.github.stefanmhsg.ccrs:ccrs-a2a:0.1.0-SNAPSHOT'
+```
 
 All current Java projects use a Java 21 Gradle toolchain and compile with
 `--release 21`. Install a Java 21 JDK for local builds; Gradle toolchain
@@ -54,16 +72,10 @@ standalone-module acceptance contract and migration sequence are documented in
 [CCRS_LIBRARY.md](CCRS_LIBRARY.md) and
 [PLAN_CCRS_PHYSICAL_SEPARATION.md](PLAN_CCRS_PHYSICAL_SEPARATION.md).
 
-Compile the app and all CCRS modules:
+Compile the coordinate-only root application without running agents:
 
 ```powershell
-./gradlew classes
-```
-
-Publish only the `ccrs-*` libraries to your local Maven repository:
-
-```powershell
-./gradlew publishToMavenLocal
+.\gradlew.bat --refresh-dependencies classes
 ```
 
 The published coordinates use:
@@ -78,31 +90,19 @@ For example:
 implementation 'io.github.stefanmhsg.ccrs:ccrs-core:0.1.0-SNAPSHOT'
 ```
 
-The root JaCaMo application is not configured as a Maven publication. Only the
-`ccrs-*` modules are publishable.
-
-You can also publish the libraries to a repository-local Maven directory:
-
-```powershell
-./gradlew :ccrs-core:publishMavenJavaPublicationToCcrsLocalRepository `
-  :ccrs-jacamo:publishMavenJavaPublicationToCcrsLocalRepository `
-  :ccrs-hypermedea:publishMavenJavaPublicationToCcrsLocalRepository `
-  :ccrs-langchain4j:publishMavenJavaPublicationToCcrsLocalRepository `
-  :ccrs-a2a:publishMavenJavaPublicationToCcrsLocalRepository
-```
-
-That writes artifacts under `build/local-maven-repo`, which is useful for
-clean consumer smoke tests.
+The root JaCaMo application is not a Maven publication. Each `ccrs-*` module
+owns exactly one `mavenJava` publication and can publish it independently.
 
 ## GitHub Packages Snapshots
 
-The five library modules can also be published to the repository-scoped Maven
+The five standalone library builds publish to the repository-scoped Maven
 registry at `https://maven.pkg.github.com/stefanmhsg/ccrs-bdi`. The explicitly
 triggered
 [Publish CCRS snapshots workflow](.github/workflows/publish-ccrs-snapshots.yml)
-builds and tests every module, publishes `0.1.0-SNAPSHOT`, and then resolves the
-artifacts in a clean consumer job. Pull requests and ordinary builds do not
-publish packages.
+first validates their coordinate graph in an isolated runner-temporary Maven
+repository, then builds and publishes them in dependency order through their
+own wrappers. A separate job resolves the resulting `0.1.0-SNAPSHOT` artifacts
+in a fresh Gradle user home. Pull requests and ordinary builds do not publish.
 
 GitHub Actions uses its automatically created `GITHUB_TOKEN`; no repository
 PAT secret is required for this same-repository workflow. For local publication
@@ -115,14 +115,17 @@ gpr.key=YOUR_CLASSIC_GITHUB_PAT
 ```
 
 Use `read:packages` to consume packages and add `write:packages` to publish
-them. Never put these properties in a repository file. With those local
-properties configured, publish all five aligned snapshots with:
+them. Never put these properties in a repository file. A local manual
+publication invokes
+`publishMavenJavaPublicationToGitHubPackagesRepository` from each module in
+dependency order. Prefer the workflow for publishing the aligned set.
 
 ```powershell
-./gradlew publishCcrsSnapshotsToGitHubPackages
+.\ccrs-core\gradlew.bat -p ccrs-core `
+  publishMavenJavaPublicationToGitHubPackagesRepository
 ```
 
-The aggregate task refuses non-snapshot versions. Stable, tag-driven releases
+Each GitHub Packages publication task refuses non-snapshot versions. Stable, tag-driven releases
 are intentionally deferred until the release-hardening work package in
 [PLAN_CCRS_PHYSICAL_SEPARATION.md](PLAN_CCRS_PHYSICAL_SEPARATION.md).
 
@@ -134,15 +137,14 @@ published CCRS libraries from Maven coordinates instead of using Gradle project
 dependencies. It also verifies the public LangChain4j API and the optional
 service descriptors.
 
-Run it after publishing the libraries:
+Run it against GitHub Packages as documented in the
+[consumer README.md](examples/ccrs-library-consumer/README.md), or point it at
+one explicitly selected staging repository:
 
 ```powershell
-./gradlew :ccrs-core:publishMavenJavaPublicationToCcrsLocalRepository `
-  :ccrs-jacamo:publishMavenJavaPublicationToCcrsLocalRepository `
-  :ccrs-hypermedea:publishMavenJavaPublicationToCcrsLocalRepository `
-  :ccrs-langchain4j:publishMavenJavaPublicationToCcrsLocalRepository `
-  :ccrs-a2a:publishMavenJavaPublicationToCcrsLocalRepository
-./gradlew -p examples/ccrs-library-consumer run
+.\gradlew.bat -p examples/ccrs-library-consumer `
+  -PccrsRepositoryUrl=S:/path/to/ccrs-staging-repo `
+  --refresh-dependencies clean build run
 ```
 
 The example first validates the published dependency scopes and service files,

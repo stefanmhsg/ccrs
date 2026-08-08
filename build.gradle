@@ -17,123 +17,25 @@ apply from: '.jcm-deps.gradle' // this file contains dependencies declared in th
 version = '0.1.0-SNAPSHOT'
 group = 'io.github.stefanmhsg.ccrs'
 
-def ccrsLibraryProjects = subprojects.findAll { it.name.startsWith('ccrs-') }
-def githubPackagesUser = providers.gradleProperty('gpr.user')
-    .orElse(providers.environmentVariable('GITHUB_ACTOR'))
-def githubPackagesToken = providers.gradleProperty('gpr.key')
-    .orElse(providers.environmentVariable('GITHUB_TOKEN'))
-
-allprojects {
-    version = '0.1.0-SNAPSHOT'
-    group = 'io.github.stefanmhsg.ccrs'
-
-    plugins.withId('java') {
-        java {
-            toolchain {
-                languageVersion = JavaLanguageVersion.of(21)
-            }
-        }
-
-        tasks.withType(JavaCompile).configureEach {
-            options.release = 21
-        }
-    }
-
-    repositories {
-        maven { url = uri("https://raw.githubusercontent.com/jacamo-lang/mvn-repo/master") }
-        maven { url = uri("https://repo.gradle.org/gradle/libs-releases") }
-
-        //maven { url "http://jacamo.sourceforge.net/maven2" }
-        //maven { url "https://jade.tilab.com/maven/" }
-
-        flatDir { dirs "${rootProject.projectDir}/lib" }
-
-        mavenCentral()
-        maven { url = uri("https://jitpack.io") }
-
-        maven { url = uri('https://hypermedea.github.io/maven') }
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
     }
 }
 
-configure(ccrsLibraryProjects) {
-    apply plugin: 'java-library'
-    apply plugin: 'maven-publish'
-
-    java {
-        withSourcesJar()
-        withJavadocJar()
-    }
-
-    tasks.withType(Javadoc).configureEach {
-        // Validate public documentation while accepting the current missing-comment debt.
-        // WP2 treats every other Javadoc warning as a build failure.
-        options.addStringOption('Xdoclint:all,-missing', '-quiet')
-        options.addBooleanOption('Werror', true)
-    }
-
-    publishing {
-        publications {
-            mavenJava(MavenPublication) {
-                from components.java
-
-                pom {
-                    name = project.name
-                    description = "CCRS library module ${project.name}"
-                }
-            }
-        }
-
-        repositories {
-            maven {
-                name = 'ccrsLocal'
-                url = rootProject.layout.buildDirectory.dir('local-maven-repo')
-            }
-            maven {
-                name = 'GitHubPackages'
-                url = uri('https://maven.pkg.github.com/stefanmhsg/ccrs-bdi')
-                credentials {
-                    username = githubPackagesUser.orNull
-                    password = githubPackagesToken.orNull
-                }
-            }
-        }
-    }
+tasks.withType(JavaCompile).configureEach {
+    options.release = 21
 }
 
-tasks.register('verifySnapshotVersion') {
-    group = 'publishing'
-    description = 'Fails unless the aligned CCRS version is a snapshot.'
-
-    doLast {
-        if (!project.version.toString().endsWith('-SNAPSHOT')) {
-            throw new GradleException(
-                "Refusing snapshot publication for non-snapshot version ${project.version}"
-            )
-        }
-    }
-}
-
-ccrsLibraryProjects.each { libraryProject ->
-    libraryProject.tasks.named('publishMavenJavaPublicationToGitHubPackagesRepository') {
-        dependsOn rootProject.tasks.named('verifySnapshotVersion')
-    }
-}
-
-tasks.register('publishCcrsSnapshotsToGitHubPackages') {
-    group = 'publishing'
-    description = 'Publishes all five CCRS snapshot modules to GitHub Packages.'
-    dependsOn tasks.named('verifySnapshotVersion')
-    dependsOn ccrsLibraryProjects.collect {
-        "${it.path}:publishMavenJavaPublicationToGitHubPackagesRepository"
-    }
-}
+def ccrsVersion = providers.gradleProperty('ccrsVersion')
+    .getOrElse('0.1.0-SNAPSHOT')
 
 dependencies {
-    implementation project(':ccrs-core')
-    implementation project(':ccrs-jacamo')
-    implementation project(':ccrs-hypermedea')
-    implementation project(':ccrs-langchain4j')
-    implementation project(':ccrs-a2a')
+    implementation "io.github.stefanmhsg.ccrs:ccrs-core:${ccrsVersion}"
+    implementation "io.github.stefanmhsg.ccrs:ccrs-jacamo:${ccrsVersion}"
+    implementation "io.github.stefanmhsg.ccrs:ccrs-hypermedea:${ccrsVersion}"
+    implementation "io.github.stefanmhsg.ccrs:ccrs-langchain4j:${ccrsVersion}"
+    implementation "io.github.stefanmhsg.ccrs:ccrs-a2a:${ccrsVersion}"
 }
 
 sourceSets {

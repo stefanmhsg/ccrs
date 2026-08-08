@@ -14,6 +14,34 @@ points. Artifacts such as Hypermedea may synchronize directly with the belief
 base, while structural opportunistic CCRS matching needs cycle-level batching
 from CArtAgO observables.
 
+## Standalone Build
+
+This directory is a complete Java 21 Gradle build that publishes
+`io.github.stefanmhsg.ccrs:ccrs-jacamo:0.1.0-SNAPSHOT`. Its dependency on
+`ccrs-core` is a Maven coordinate, not a sibling Gradle project.
+
+With GitHub Packages credentials configured in the user-level Gradle
+properties file, run:
+
+```powershell
+.\gradlew.bat --refresh-dependencies build
+.\gradlew.bat publishToMavenLocal
+```
+
+For an isolated coordinate-based build chain, pass the same explicit staging
+repository to the core publication and this build:
+
+```powershell
+.\gradlew.bat `
+  -PccrsRepositoryUrl=S:/path/to/ccrs-staging-repo `
+  --refresh-dependencies build
+```
+
+Publish a snapshot with
+`publishMavenJavaPublicationToGitHubPackagesRepository`. The standalone build
+does not read the BDI root build, application sources, `.jcm` files, or
+AgentSpeak examples.
+
 ## Optional Artifact History
 
 The JaCaMo adapter does not depend on a concrete HTTP artifact implementation.

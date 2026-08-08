@@ -77,10 +77,9 @@ The output is a list of `suggestion(...)` terms. Consumers should inspect the pr
 
 The Java `CcrsContext` supplied through `CcrsJasonServices` owns interaction and trace history for the agent run. Keep that service/context instance stable across invocations.
 
-The current
-[examples.asl](../../../../../resources/ccrs/jacamo/jason/contingency/examples.asl)
-contains application-level AgentSpeak handlers. It is temporarily stored in
-this module but is not part of the supported JaCaMo library runtime contract;
-the physical-separation plan moves it with the BDI application. See the
+The application-owned
+[examples.asl](../../../../../../../../src/agt/examples/contingency/examples.asl)
+contains complete AgentSpeak handler patterns. It is not packaged in this
+module and is not part of the supported JaCaMo library runtime contract. See the
 [core contingency README.md](../../../../../../../../ccrs-core/src/main/java/ccrs/core/contingency/README.md)
 for configuration and Stop semantics.

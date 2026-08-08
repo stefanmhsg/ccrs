@@ -20,6 +20,26 @@ This package is intentionally separate from the JaCaMo adapter package. It is a
 replaceable HTTP artifact/history provider that installs an
 `InteractionHistoryProvider` through `ccrs.jacamo.CcrsJacamoRuntime`.
 
+## Standalone Build
+
+This directory is a complete Java 21 Gradle build. It resolves `ccrs-core` and
+`ccrs-jacamo` by Maven coordinate and publishes
+`io.github.stefanmhsg.ccrs:ccrs-hypermedea:0.1.0-SNAPSHOT`.
+
+With GitHub Packages credentials configured in the user-level Gradle
+properties file, run:
+
+```powershell
+.\gradlew.bat --refresh-dependencies build
+.\gradlew.bat publishToMavenLocal
+```
+
+Use `-PccrsRepositoryUrl=S:/path/to/ccrs-staging-repo` to select an explicit
+isolated Maven repository containing the aligned core and JaCaMo artifacts.
+Publish a snapshot with
+`publishMavenJavaPublicationToGitHubPackagesRepository`. No sibling source
+directory or BDI application build is consulted.
+
 ---
 
 ## Purpose

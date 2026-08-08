@@ -26,6 +26,25 @@ accepts and returns `ChatModel`. The OpenAI adapter and dotenv bridge remain
 runtime implementation dependencies. A consumer that calls `fromModel(...)`
 therefore does not need to redeclare LangChain4j.
 
+## Standalone Build
+
+This directory is a complete Java 21 Gradle build. It resolves `ccrs-core` by
+Maven coordinate and publishes
+`io.github.stefanmhsg.ccrs:ccrs-langchain4j:0.1.0-SNAPSHOT`.
+
+With GitHub Packages credentials configured in the user-level Gradle
+properties file, run:
+
+```powershell
+.\gradlew.bat --refresh-dependencies build
+.\gradlew.bat publishToMavenLocal
+```
+
+Use `-PccrsRepositoryUrl=S:/path/to/ccrs-staging-repo` to select an explicit
+isolated Maven repository containing the aligned core artifact. Publish a
+snapshot with `publishMavenJavaPublicationToGitHubPackagesRepository`. The
+build does not read the BDI root or another capability module.
+
 ## Architecture Overview
 
 ```text

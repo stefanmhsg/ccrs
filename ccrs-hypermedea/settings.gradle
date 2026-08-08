@@ -16,35 +16,24 @@ dependencyResolutionManagement {
 
         exclusiveContent {
             forRepository {
-                if (ccrsRepositoryUrl.present) {
-                    maven {
+                maven {
+                    if (ccrsRepositoryUrl.present) {
                         name = 'ccrsStaging'
                         url = uri(ccrsRepositoryUrl.get())
-                    }
-                } else {
-                    if (!githubPackagesUser.present || !githubPackagesToken.present) {
-                        throw new GradleException(
-                            'GitHub Packages requires gpr.user/gpr.key or '
-                                + 'GITHUB_ACTOR/GITHUB_TOKEN'
-                        )
-                    }
-                    maven {
+                    } else {
                         name = 'GitHubPackages'
                         url = uri('https://maven.pkg.github.com/stefanmhsg/ccrs-bdi')
                         credentials {
-                            username = githubPackagesUser.get()
-                            password = githubPackagesToken.get()
+                            username = githubPackagesUser.orNull
+                            password = githubPackagesToken.orNull
                         }
-                        mavenContent {
-                            snapshotsOnly()
-                        }
+                        mavenContent { snapshotsOnly() }
                     }
                 }
             }
-            filter {
-                includeGroup('io.github.stefanmhsg.ccrs')
-            }
+            filter { includeGroup('io.github.stefanmhsg.ccrs') }
         }
+
         mavenCentral()
         maven { url = uri('https://raw.githubusercontent.com/jacamo-lang/mvn-repo/master') }
         maven { url = uri('https://repo.gradle.org/gradle/libs-releases') }
@@ -53,4 +42,4 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = 'ccrs-library-consumer'
+rootProject.name = 'ccrs-hypermedea'

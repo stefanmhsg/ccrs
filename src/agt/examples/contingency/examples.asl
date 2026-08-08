@@ -1,5 +1,5 @@
 // =========================================================================
-// Contingency CCRS evaluate() - Quick Reference Examples
+// Contingency CCRS evaluate() - Application Quick Reference Examples
 // =========================================================================
 // This file shows the type-free map-based evaluate() signature.
 // See contingency/README.md for detailed documentation.

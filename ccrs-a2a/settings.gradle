@@ -27,24 +27,16 @@ dependencyResolutionManagement {
                             username = githubPackagesUser.orNull
                             password = githubPackagesToken.orNull
                         }
-                        mavenContent {
-                            snapshotsOnly()
-                        }
+                        mavenContent { snapshotsOnly() }
                     }
                 }
             }
-            filter {
-                includeGroup('io.github.stefanmhsg.ccrs')
-            }
+            filter { includeGroup('io.github.stefanmhsg.ccrs') }
         }
 
         mavenCentral()
-        maven { url = uri('https://raw.githubusercontent.com/jacamo-lang/mvn-repo/master') }
-        maven { url = uri('https://repo.gradle.org/gradle/libs-releases') }
-        maven { url = uri('https://hypermedea.github.io/maven') }
         maven { url = uri('https://jitpack.io') }
-        flatDir { dirs rootDir.toPath().resolve('lib').toFile() }
     }
 }
 
-rootProject.name = 'ccrs-bdi'
+rootProject.name = 'ccrs-a2a'
