@@ -41,11 +41,11 @@ class CcrsHypermedeaIntegrationTest {
     @Test
     @Order(2)
     void serviceLoaderFindsTheCcrsHttpBinding() {
-        List<Class<? extends ProtocolBinding>> providerTypes = ServiceLoader.load(ProtocolBinding.class).stream()
+        boolean providerFound = ServiceLoader.load(ProtocolBinding.class).stream()
             .map(ServiceLoader.Provider::type)
-            .toList();
+            .anyMatch(CcrsHttpBinding.class::equals);
 
-        assertTrue(providerTypes.contains(CcrsHttpBinding.class));
+        assertTrue(providerFound);
     }
 
     @Test

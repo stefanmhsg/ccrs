@@ -21,12 +21,12 @@ class A2aCapabilityTest {
 
     @Test
     void serviceLoaderFindsTheA2aProvider() {
-        List<Class<? extends CcrsStrategyProvider>> providerTypes =
+        boolean providerFound =
             ServiceLoader.load(CcrsStrategyProvider.class).stream()
             .map(ServiceLoader.Provider::type)
-            .toList();
+            .anyMatch(A2aConsultationStrategyProvider.class::equals);
 
-        assertTrue(providerTypes.contains(A2aConsultationStrategyProvider.class));
+        assertTrue(providerFound);
     }
 
     @Test

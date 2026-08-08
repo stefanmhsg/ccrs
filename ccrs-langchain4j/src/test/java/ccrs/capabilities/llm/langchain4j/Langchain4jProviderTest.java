@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.util.List;
 import java.util.ServiceLoader;
 
 import org.junit.jupiter.api.Test;
@@ -21,12 +20,12 @@ class Langchain4jProviderTest {
 
     @Test
     void serviceLoaderFindsTheLangchain4jProvider() {
-        List<Class<? extends CcrsStrategyProvider>> providerTypes =
+        boolean providerFound =
             ServiceLoader.load(CcrsStrategyProvider.class).stream()
             .map(ServiceLoader.Provider::type)
-            .toList();
+            .anyMatch(Langchain4jPredictionStrategyProvider.class::equals);
 
-        assertTrue(providerTypes.contains(Langchain4jPredictionStrategyProvider.class));
+        assertTrue(providerFound);
     }
 
     @Test
