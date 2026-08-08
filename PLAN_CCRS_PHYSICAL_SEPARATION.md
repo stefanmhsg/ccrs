@@ -62,8 +62,8 @@ The initial GitHub Packages host is the existing `stefanmhsg/ccrs-bdi` GitHub re
 
 | NOW | NEXT | LATER |
 | --- | --- | --- |
-| WP3: Publish the current artifacts to GitHub Packages | WP5: Make optional capability modules standalone | WP9: Harden releases and consider repository extraction |
-| WP4: Make `ccrs-core` and `ccrs-jacamo` standalone | WP6: Make Hypermedea standalone | WP10: Migrate additional consumers such as `ccrs-react` from Maven Local |
+| WP4: Make `ccrs-core` and `ccrs-jacamo` standalone | WP5: Make optional capability modules standalone | WP9: Harden releases and consider repository extraction |
+|  | WP6: Make Hypermedea standalone | WP10: Migrate additional consumers such as `ccrs-react` from Maven Local |
 |  | WP7: Add the composite development workspace |  |
 |  | WP8: Extract the BDI application as a package consumer |  |
 
@@ -82,8 +82,9 @@ The initial GitHub Packages host is the existing `stefanmhsg/ccrs-bdi` GitHub re
 - [x] (2026-08-08) Configured GitHub Packages publication, published all five
   `0.1.0-SNAPSHOT` modules, confirmed them through GitHub's package API, and ran
   the artifact-only consumer successfully with a fresh Gradle user home.
-- [ ] Commit and push the WP3 workflow, dispatch `Publish CCRS snapshots`, and
-  record the first successful workflow URL before changing WP3 to Done.
+- [x] (2026-08-08 15:21Z) Committed and pushed the WP3 workflow, then completed
+  [Publish CCRS snapshots run 31264049379](https://github.com/stefanmhsg/ccrs-bdi/actions/runs/31264049379):
+  publication passed in 3m42s and the fresh remote consumer passed in 1m00s.
 - [ ] Complete WP4 through WP7, leaving every CCRS module independently buildable and locally composable.
 - [ ] Complete WP8 so the BDI application no longer uses CCRS project dependencies.
 - [ ] Complete WP9 release gates before publishing the first non-snapshot version.
@@ -138,6 +139,14 @@ The initial GitHub Packages host is the existing `stefanmhsg/ccrs-bdi` GitHub re
   'runner'`. Moving the same expression to the `Resolve and run remote
   publications` step's `env` makes it evaluate after a runner has been
   assigned while preserving the fresh Gradle user home.
+
+- Observation: A working local wrapper script does not prove that a clean
+  checkout contains the Gradle wrapper launcher.
+  Evidence: The first dispatched workflow reached `./gradlew` but failed with
+  `Unable to access jarfile .../gradle/wrapper/gradle-wrapper.jar` because the
+  blanket `*.jar` ignore rule excluded the launcher. Commit `4c20e70` added the
+  narrow ignore exception and tracked the 45 KB wrapper jar; the replacement
+  workflow completed both jobs successfully.
 
 ## Decision Log
 
@@ -297,7 +306,7 @@ Public-signature inspection confirms that core exposes Jena `Model` and `Query`,
 
 ### WP3: Establish GitHub Packages snapshot publication
 
-Status: Now
+Status: Done
 
 Purpose: Prove the remote distribution path before independent builds rely on it. A clean authenticated consumer must resolve all five snapshot artifacts without Maven Local, the repository-local Maven directory, sibling sources, or a warmed Gradle cache.
 
@@ -313,7 +322,7 @@ Todos:
 - [x] Add consumer repository documentation for `read:packages` authentication.
 - [x] Add a clean remote consumer smoke job using a fresh `GRADLE_USER_HOME` and no `mavenLocal()` repository.
 - [x] Verify sources jars, Javadocs jars, Gradle module metadata, POMs, and service files after remote resolution.
-- [ ] Commit and push the workflow, dispatch it manually, and record its first
+- [x] Commit and push the workflow, dispatch it manually, and record its first
   successful run URL.
 
 Concrete steps: Configure publication so the task name is stable, for example `publishMavenJavaPublicationToGitHubPackagesRepository`. In CI, run:
@@ -337,8 +346,12 @@ local authorized publication created all five package records under
 five sources jars, five Javadocs jars, five POMs, and five Gradle metadata files
 from GitHub Packages; the consumer then discovered both strategy providers and
 the Hypermedea binding, invoked the public `ChatModel` path, and evaluated core.
-The workflow file is still uncommitted, so no honest workflow run URL exists
-yet. Commit/push/dispatch is the only remaining WP3 acceptance item.
+The first clean-checkout attempt exposed the ignored Gradle wrapper jar and
+therefore stopped before publication. After tracking the wrapper launcher,
+[Publish CCRS snapshots run 31264049379](https://github.com/stefanmhsg/ccrs-bdi/actions/runs/31264049379)
+completed successfully at commit `4c20e70`: the build, test, Javadoc, and
+publication job passed in 3m42s, followed by the isolated remote-consumer job in
+1m00s. WP3 is complete; WP4 is now the only active work package.
 
 ### WP4: Make `ccrs-core` and `ccrs-jacamo` independent builds
 
@@ -647,6 +660,13 @@ an otherwise empty Gradle user home. It reported:
     - LangChain4j ChatModel API: compile and invocation passed
     BUILD SUCCESSFUL
 
+The manually dispatched
+[Publish CCRS snapshots run 31264049379](https://github.com/stefanmhsg/ccrs-bdi/actions/runs/31264049379)
+then reproduced the complete path from a clean GitHub Actions checkout. The
+build, 103 focused tests, five Javadoc tasks, and five-module publication passed
+in the first job; the dependent fresh-Gradle-home consumer passed in the second
+job.
+
 Current coordinates:
 
     io.github.stefanmhsg.ccrs:ccrs-core:0.1.0-SNAPSHOT
@@ -710,3 +730,8 @@ Revision note (2026-08-08, WP3 workflow context correction): Moved the clean
 consumer's `GRADLE_USER_HOME` expression from job-level `env`, where the
 `runner` context is unavailable, to the remote-consumer execution step, where
 the assigned runner exposes `runner.temp`.
+
+Revision note (2026-08-08, WP3 completion): Recorded the initial clean-checkout
+failure caused by the ignored Gradle wrapper jar, the narrow wrapper recovery
+commit, and successful workflow run 31264049379. Marked every WP3 todo complete,
+moved WP3 out of the Now matrix, and made WP4 the sole active work package.
