@@ -57,9 +57,9 @@ module is standalone only when all of the following are true:
 - its source directory is a complete Gradle build with its own settings,
   wrapper, artifact identity, repositories, Java configuration, tests, and
   publication configuration;
-- `build`, `test`, and `publishToMavenLocal` succeed when invoked from that
-  directory without reading the BDI application build or sibling CCRS source
-  directories;
+- `build`, `test`, and publication to an explicitly selected staging repository
+  succeed when invoked from that directory without reading the BDI application
+  build or sibling CCRS source directories;
 - dependencies on other CCRS modules use published Maven coordinates rather
   than Gradle project paths;
 - a clean consumer compiles and runs against the published coordinate without
@@ -529,6 +529,12 @@ sources, resources, tests, and Maven publication. Library-to-library edges use
 dependencies. The root remains the concrete JaCaMo application, has no included
 CCRS projects, and consumes the same published coordinates as an external app.
 
+The optional [CCRS composite workspace](ccrs-workspace/README.md) includes all
+five complete builds for local development. Its explicit substitutions map the
+same `io.github.stefanmhsg.ccrs` coordinates to local source only while the
+workspace is running. The workspace owns no production source, dependencies,
+repositories, Java configuration, or publication, and no module depends on it.
+
 For isolated local verification, publish into a staging repository outside the
 root `build` directory, because the application `clean` task removes that
 directory. Pass the staging path explicitly as `-PccrsRepositoryUrl=...` to
@@ -626,6 +632,9 @@ Implemented toward the split:
   `ccrs.hypermedea`
 - five standalone Gradle builds exist for `ccrs-core`, `ccrs-jacamo`,
   `ccrs-hypermedea`, `ccrs-langchain4j`, and `ccrs-a2a`
+- `ccrs-workspace` optionally verifies all five builds with coordinate-preserving
+  local source substitution while direct module and consumer builds continue to
+  resolve Maven artifacts
 - the BDI application resolves all five through Maven coordinates and owns the
   `.jcm`, `.asl`, environment, logging, and experiment content
 

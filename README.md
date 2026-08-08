@@ -25,6 +25,7 @@ application code and are not intended to be published as libraries.
 | [ccrs-hypermedea](ccrs-hypermedea) | Optional Hypermedea integration and interaction history provider. |
 | [ccrs-langchain4j](ccrs-langchain4j) | Optional LangChain4j/OpenAI-backed LLM capability provider. |
 | [ccrs-a2a](ccrs-a2a) | Optional A2A-backed consultation capability provider. |
+| [ccrs-workspace](ccrs-workspace) | Optional Gradle composite for editing and verifying all five standalone libraries together. |
 | [src/agt](src/agt) and `*.jcm` | This repository's JaCaMo/Jason application agents and launch configurations. |
 | [experiments](experiments) | Manual MASE experiment workflow, metrics documentation, analysis scripts, run archives, and generated reports. |
 | [examples/ccrs-library-consumer](examples/ccrs-library-consumer) | Standalone example project that consumes the published CCRS modules from Maven coordinates. |
@@ -32,22 +33,34 @@ application code and are not intended to be published as libraries.
 
 ## Working On The CCRS Libraries
 
-Each `ccrs-*` directory is a complete Gradle build with its own
+Each of the five library directories is a complete Gradle build with its own
 `settings.gradle`, wrapper, Java 21 configuration, tests, and publication.
 There are no CCRS subprojects in the root [settings.gradle](settings.gradle)
 and no Gradle `project(...)` dependencies between modules.
 
-Open the module directory itself as a Gradle project in an IDE. Until the
-optional composite workspace is added, importing only the repository root
-shows CCRS as external libraries rather than editable source projects.
+Open a module directory itself as a Gradle project to work on that library in
+isolation. Open [ccrs-workspace](ccrs-workspace) to edit and navigate all five
+included builds together while preserving their Maven-coordinate dependency
+declarations.
 
 Build one module from its directory:
 
 ```powershell
 cd ccrs-core
 .\gradlew.bat build
-.\gradlew.bat publishToMavenLocal
 ```
+
+Build and test all library sources through composite substitution:
+
+```powershell
+cd ccrs-workspace
+.\gradlew.bat verifyAll
+```
+
+The workspace contains no production code, dependency declarations,
+repositories, or publication. Its aggregate tasks delegate to the five module
+builds. See the [CCRS composite workspace README.md](ccrs-workspace/README.md)
+for the source-substitution and published-artifact workflows.
 
 Dependent modules such as `ccrs-jacamo` resolve CCRS dependencies from GitHub
 Packages by default. They can instead use one explicitly selected staging
@@ -99,10 +112,11 @@ The five standalone library builds publish to the repository-scoped Maven
 registry at `https://maven.pkg.github.com/stefanmhsg/ccrs-bdi`. The explicitly
 triggered
 [Publish CCRS snapshots workflow](.github/workflows/publish-ccrs-snapshots.yml)
-first validates their coordinate graph in an isolated runner-temporary Maven
-repository, then builds and publishes them in dependency order through their
-own wrappers. A separate job resolves the resulting `0.1.0-SNAPSHOT` artifacts
-in a fresh Gradle user home. Pull requests and ordinary builds do not publish.
+first validates all local sources through the optional composite, then validates
+their coordinate graph in an isolated runner-temporary Maven repository and
+publishes them in dependency order through their own wrappers. A separate job
+resolves the resulting `0.1.0-SNAPSHOT` artifacts in a fresh Gradle user home.
+Pull requests and ordinary builds do not publish.
 
 GitHub Actions uses its automatically created `GITHUB_TOKEN`; no repository
 PAT secret is required for this same-repository workflow. For local publication

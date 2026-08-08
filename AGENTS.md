@@ -33,9 +33,14 @@
     `ccrs-core`, `ccrs-jacamo`, `ccrs-hypermedea`, `ccrs-langchain4j`, and
     `ccrs-a2a`.
   - It is also a concrete JaCaMo/Jason user project with `.jcm` files,
-    AgentSpeak agents, local experiments, and Gradle project dependencies on
+    AgentSpeak agents, local experiments, and Maven-coordinate dependencies on
     those modules.
-- The reusable libraries are the `ccrs-*` modules.
+- The reusable libraries are `ccrs-core`, `ccrs-jacamo`, `ccrs-hypermedea`,
+  `ccrs-langchain4j`, and `ccrs-a2a`; `ccrs-workspace` is tooling, not a sixth
+  library.
+- Each reusable library is a complete standalone Gradle build. The optional
+  `ccrs-workspace` composite substitutes their coordinates with local sources
+  for multi-module development but owns no module build logic or publication.
 - The root project, `.jcm` files, `.asl` agents, logs, local environment files,
   and experiments are application code and are not intended to be published as
   libraries.
@@ -92,12 +97,15 @@
 
 ## Build And Verification
 
-- Compile the app and CCRS modules with:
+- Compile the coordinate-only root application with:
   `./gradlew classes`
-- Run focused module tests when available with Gradle task paths such as:
-  `./gradlew :ccrs-core:test`
-- Publish library modules locally with:
-  `./gradlew publishToMavenLocal`
+- Run a focused module build from that module directory, for example:
+  `cd ccrs-core && ./gradlew test`
+- Verify all local module sources through the optional composite with:
+  `cd ccrs-workspace && ./gradlew verifyAll`
+- Validate published module forms through an explicitly selected staging
+  repository or GitHub Packages; do not introduce Maven Local or sibling-file
+  fallbacks.
 - Run the local JaCaMo app with:
   `gradle run`
 - Do not try to run jacamo agents in the .jcm files.

@@ -66,8 +66,8 @@ The initial GitHub Packages host is the existing `stefanmhsg/ccrs-bdi` GitHub re
 
 | NOW | NEXT | LATER |
 | --- | --- | --- |
-| WP4: Cut all five CCRS modules over to standalone builds | WP5: Add the composite development workspace | WP7: Harden releases and consider repository extraction |
-|  | WP6: Extract the BDI application as a package consumer | WP8: Migrate additional consumers such as `ccrs-react` from Maven Local |
+| WP6: Extract the BDI application as a package consumer |  | WP7: Harden releases and consider repository extraction |
+|  |  | WP8: Migrate additional consumers such as `ccrs-react` from Maven Local |
 
 ## Progress
 
@@ -89,8 +89,8 @@ The initial GitHub Packages host is the existing `stefanmhsg/ccrs-bdi` GitHub re
   publication passed in 3m42s and the fresh remote consumer passed in 1m00s.
 - [x] (2026-08-08) Implemented the WP4 atomic cutover directly in the current worktree: all five modules now own complete builds and wrappers, all CCRS edges use Maven coordinates, and the root is an application-only coordinate consumer.
 - [x] (2026-08-08) Published all five standalone builds in dependency order to `.gradle/wp4-maven-repo`, built the root application against only that repository, and ran the independent consumer successfully with all artifact and service-loader checks.
-- [ ] Complete WP4 as one all-module cutover. The implementation and isolated local validation are complete; the rewritten clean-checkout workflow still needs one successful post-push run before WP4 is closed.
-- [ ] Complete WP5 so local multi-module development uses only optional composite substitution over coordinate declarations.
+- [x] (2026-08-08 17:05Z) Completed WP4 as one all-module cutover at commit `a8cde92b`: [Publish CCRS snapshots run 31268336198](https://github.com/stefanmhsg/ccrs-bdi/actions/runs/31268336198) built, staged, tested, documented, and published all five standalone modules, then passed the fresh remote consumer.
+- [x] (2026-08-08 17:31Z) Completed WP5: added the wrapper-owned `ccrs-workspace` composite, verified all five local builds, proved JaCaMo selects local core only inside the composite, and ran JaCaMo plus the full consumer against isolated staged artifacts outside it.
 - [ ] Complete WP6 so the already coordinate-only BDI application no longer lives in the library repository.
 - [ ] Complete WP7 release gates before publishing the first non-snapshot version.
 
@@ -156,6 +156,12 @@ The initial GitHub Packages host is the existing `stefanmhsg/ccrs-bdi` GitHub re
 - Observation: A staging repository below the root `build` directory is not safe for the final application check.
   Evidence: The first coordinate-only root `clean classes` removed `build/wp4-maven-repo` before dependency resolution. Republishing to the ignored `.gradle/wp4-maven-repo` kept staging independent of root build output and the application plus consumer then passed.
 
+- Observation: The completed WP4 workflow is functionally green but its v4 setup actions now emit maintenance warnings.
+  Evidence: Run 31268336198 reports that Node.js 20 actions are being forced onto Node.js 24 and that `actions/setup-java@v4` is deprecated in favor of v5. This does not affect WP4 acceptance, but the workflow action versions should be refreshed during release hardening.
+
+- Observation: Explicit composite substitution and direct artifact resolution preserve the same coordinate declaration while selecting different component forms only at invocation time.
+  Evidence: `ccrs-workspace :ccrs-jacamo:dependencyInsight` reported `io.github.stefanmhsg.ccrs:ccrs-core:0.1.0-SNAPSHOT -> project :ccrs-core (by composite build)`. Direct `ccrs-jacamo dependencyInsight` against `.gradle/wp5-maven-repo` reported the timestamped Maven snapshot and no project component; both builds passed.
+
 ## Decision Log
 
 - Decision: Use GitHub Packages as the first remote Maven registry, associated with `stefanmhsg/ccrs-bdi`.
@@ -220,6 +226,10 @@ The initial GitHub Packages host is the existing `stefanmhsg/ccrs-bdi` GitHub re
   Rationale: A module must be buildable without the root wrapper. The repository is maintained from Windows, so the workflow's explicit `chmod +x` makes clean Linux runner behavior deterministic while every wrapper jar is re-included through `.gitignore`.
   Date/Author: 2026-08-08 / Codex
 
+- Decision: Make `ccrs-workspace` a sixth, non-publishing Gradle build with explicit substitutions for all five library coordinates and delegate aggregate tasks to included-build lifecycle tasks.
+  Rationale: Explicit mappings make source selection reviewable, while delegation leaves dependency, repository, Java, test, and publication logic exclusively in each standalone module. The existing workflow can compare this source path with isolated staged and fresh remote artifact paths.
+  Date/Author: 2026-08-08 / Codex
+
 ## Context and Orientation
 
 The current `ccrs-bdi` repository has two roles. The root project is a JaCaMo/Jason application containing `.jcm` configurations, AgentSpeak `.asl` programs, experiments, and environment integration. Five `ccrs-*` directories contain physically standalone reusable Java library builds. [AGENTS.md](AGENTS.md) and [CCRS_LIBRARY.md](CCRS_LIBRARY.md) define their conceptual boundaries.
@@ -230,7 +240,7 @@ The root [settings.gradle](settings.gradle) includes no CCRS subprojects. The ro
 
 A standalone build has its own `settings.gradle`, wrapper, complete build configuration, artifact identity, dependency repositories, tests, and publication definition. Its dependencies on other CCRS modules are Maven coordinates, for example `io.github.stefanmhsg.ccrs:ccrs-core:<version>`, rather than Gradle project paths. It must build when its sibling source directories are unavailable.
 
-WP4 performs one all-library cutover: all five modules leave the root subproject build together, all inter-module and application dependencies become coordinates, and all library publication moves to the standalone builds. It is being performed directly in the current worktree. An explicitly selected staging repository and CI fixture prove the coordinate graph without creating an intermediate compatibility state.
+WP4 performed one all-library cutover: all five modules left the root subproject build together, all inter-module and application dependencies became coordinates, and all library publication moved to the standalone builds. It was performed directly in the current worktree. An explicitly selected staging repository and CI fixture proved the coordinate graph without creating an intermediate compatibility state.
 
 A composite build is an optional Gradle workspace that includes several complete builds and substitutes matching Maven coordinates with local projects. It preserves fast cross-module development without making any module depend on the workspace. The authoritative proof remains running each build alone and resolving its published form in a clean consumer.
 
@@ -369,11 +379,11 @@ therefore stopped before publication. After tracking the wrapper launcher,
 [Publish CCRS snapshots run 31264049379](https://github.com/stefanmhsg/ccrs-bdi/actions/runs/31264049379)
 completed successfully at commit `4c20e70`: the build, test, Javadoc, and
 publication job passed in 3m42s, followed by the isolated remote-consumer job in
-1m00s. WP3 is complete; WP4 is now the only active work package.
+1m00s. WP3 was complete at that point, making WP4 the next active work package.
 
 ### WP4: Cut all CCRS modules over to standalone builds
 
-Status: Now — implementation and isolated local acceptance complete; clean-checkout workflow run pending
+Status: Done
 
 Purpose: Replace the five-module root-subproject build with five authoritative standalone Gradle builds in one cutover. After WP4, every `ccrs-*` directory builds and publishes independently, the BDI application consumes all five libraries by coordinate, and the repository contains no supported legacy `project(...)` path.
 
@@ -398,7 +408,7 @@ Todos:
 - [x] Update [CCRS_LIBRARY.md](CCRS_LIBRARY.md), the core [opportunistic README.md](ccrs-core/src/main/java/ccrs/core/opportunistic/README.md), [contingency README.md](ccrs-core/src/main/java/ccrs/core/contingency/README.md), and [RDF README.md](ccrs-core/src/main/java/ccrs/core/rdf/README.md), plus [ccrs-jacamo README.md](ccrs-jacamo/README.md), [ccrs-hypermedea README.md](ccrs-hypermedea/README.md), [ccrs-langchain4j README.md](ccrs-langchain4j/README.md), [ccrs-a2a README.md](ccrs-a2a/README.md), consumer instructions, and IDE/import guidance for the standalone layout.
 - [x] Track every nested `gradle-wrapper.jar` despite the repository-wide jar ignore rule and make the Linux workflow set every Unix wrapper executable before use.
 - [x] Prove that the cutover candidate contains no active CCRS subproject include, `project(...)` dependency, alternate legacy settings file, Maven Local resolution fallback, or duplicate publication path.
-- [ ] Commit and push the atomic cutover, dispatch the rewritten workflow, and record one successful five-wrapper publication plus fresh remote-consumer run.
+- [x] Commit and push the atomic cutover, dispatch the rewritten workflow, and record one successful five-wrapper publication plus fresh remote-consumer run.
 
 Concrete steps: Work directly in the current worktree as requested. Build and publish core to an explicitly selected isolated staging repository under `.gradle`, then build and publish the direct dependents against the same coordinate repository, followed by Hypermedea. The standalone command shape from each module directory is:
 
@@ -428,11 +438,11 @@ The search must return no active legacy declarations. References in historical d
 
 Validation and acceptance: All five standalone `build` and isolated staging publication commands pass from their own directories with no root build inheritance. Generated POM and Gradle metadata preserve the WP2 dependency scopes. The root application compiles using only coordinates. The rewritten manual workflow builds, tests, documents, and publishes all five modules through their own wrappers, then its clean remote consumer resolves the new snapshots and verifies both strategy providers, the Hypermedea binding, and the public LangChain4j API. Removing any sibling module directory does not prevent a module from resolving its declared published dependencies. The root contains no CCRS subproject include, `project(...)` dependency, inherited library configuration, fallback switch, or duplicate publication path.
 
-Outcome and notes: The five library directories now each contain authoritative settings, build logic, Gradle 9.2.0 wrappers, sources, resources, and tests. The root includes no library projects and owns no library publication; its five dependencies are Maven coordinates. The workflow uses each module wrapper in dependency order and applies `chmod +x` in the Linux checkout. Local staging under `.gradle/wp4-maven-repo` produced all five publications; the root app and consumer resolved only those publications, all five sources/Javadocs/POM/module-metadata files were found, both strategy providers and the Hypermedea binding loaded, and the public LangChain4j API passed. The remaining WP4 evidence is the post-push clean-checkout workflow URL.
+Outcome and notes: Completed on 2026-08-08. The five library directories now each contain authoritative settings, build logic, Gradle 9.2.0 wrappers, sources, resources, and tests. The root includes no library projects and owns no library publication; its five dependencies are Maven coordinates. The workflow uses each module wrapper in dependency order and applies `chmod +x` in the Linux checkout. Local staging under `.gradle/wp4-maven-repo` produced all five publications; the root app and consumer resolved only those publications, all five sources/Javadocs/POM/module-metadata files were found, both strategy providers and the Hypermedea binding loaded, and the public LangChain4j API passed. At commit `a8cde92b`, [run 31268336198](https://github.com/stefanmhsg/ccrs-bdi/actions/runs/31268336198) repeated the complete path from a clean checkout: build/stage/publication passed in 4m18s and the fresh authenticated remote consumer passed in 1m06s. WP4 is complete.
 
 ### WP5: Add a composite workspace for local multi-module development
 
-Status: Next
+Status: Done
 
 Purpose: Restore the convenience of one-command cross-module development through a dedicated composite workspace without weakening standalone boundaries or changing the still-present root BDI application.
 
@@ -442,22 +452,22 @@ Discussion: Create the composite as a dedicated workspace build such as `ccrs-wo
 
 Todos:
 
-- [ ] Add a dedicated `ccrs-workspace` aggregator and wrapper that uses `includeBuild` for every independent CCRS build; do not preserve or reintroduce any `include`-based CCRS subprojects.
-- [ ] Add substitutions for all five coordinates if automatic matching is insufficient.
-- [ ] Add aggregate verification tasks without duplicating module build logic.
-- [ ] Document how to build one module in isolation, all libraries together, and a consumer with local substitutions.
-- [ ] Add a CI comparison that validates both composite-source and published-artifact paths.
-- [ ] Prove the aggregator contains no module build logic, publication, repository fallback, or `project(...)` dependency.
+- [x] Add a dedicated `ccrs-workspace` aggregator and wrapper that uses `includeBuild` for every independent CCRS build; do not preserve or reintroduce any `include`-based CCRS subprojects.
+- [x] Add explicit substitutions for all five coordinates.
+- [x] Add aggregate verification tasks without duplicating module build logic.
+- [x] Document how to build one module in isolation, all libraries together, and a consumer with local substitutions.
+- [x] Add a CI comparison that validates both composite-source and published-artifact paths.
+- [x] Prove the aggregator contains no module build logic, publication, repository fallback, or `project(...)` dependency.
 
 Concrete steps: From `S:\dev\ma\ccrs-bdi\ccrs-workspace`, run its wrapper and composite aggregate verification task, then run each module build directly. Also run the published consumer outside the composite and confirm it resolves the published artifact rather than local source.
 
 Validation and acceptance: A source edit in core is visible to a locally included JaCaMo build without publishing. The same JaCaMo build succeeds alone by resolving the configured core coordinate. Published and substituted dependency graphs remain behaviorally equivalent.
 
-Outcome and notes: Record the aggregator layout and any explicit substitutions.
+Outcome and notes: Completed on 2026-08-08. [ccrs-workspace](ccrs-workspace/README.md) is a Gradle 9.2.0 composite containing only settings, aggregate lifecycle tasks, documentation, and its wrapper. Its settings explicitly substitute all five `io.github.stefanmhsg.ccrs:<module>` coordinates with the root project of the matching included build. `verifyAll` delegates to every module's `build`; `testAll` delegates to every module's `test`. The snapshot workflow now runs `verifyAll` before its existing isolated-staging, publication, and fresh-remote-consumer checks. Local `verifyAll` passed all five builds. Dependency insight proved JaCaMo selected `project :ccrs-core` inside the composite and the timestamped staged Maven artifact outside it. A full artifact-only consumer run then resolved all five documentation and metadata artifact sets, loaded both strategy providers plus Hypermedea, compiled the public LangChain4j API, and printed the expected retry suggestion. No workspace file declares a repository, dependency, Java configuration, production source, Maven publication, Maven Local fallback, or Gradle `project(...)` dependency.
 
 ### WP6: Extract the BDI application as a package-only consumer
 
-Status: Next
+Status: Now
 
 Purpose: Prove the final ownership boundary by making the JaCaMo BDI application independent of library source, like the sibling `ccrs-react` repository, while consuming GitHub Packages rather than Maven Local.
 
@@ -506,6 +516,7 @@ Todos:
 - [ ] Add tag-driven non-snapshot publication with version/tag consistency checks.
 - [ ] Add binary/source API compatibility checks and dependency vulnerability reporting.
 - [ ] Add reproducible clean consumer jobs for Gradle, and Maven if Maven consumers are supported.
+- [ ] Update GitHub workflow actions to maintained Node.js 24-compatible releases, including replacing deprecated `actions/setup-java@v4`.
 - [ ] Decide whether to publish a `ccrs-platform` alignment artifact.
 - [ ] Compare GitHub Packages authentication friction with the intended audience and record whether Maven Central should become an additional later target.
 - [ ] Decide whether any module needs its own source repository; if so, preserve history and do not change coordinates in the same step.
@@ -561,7 +572,7 @@ At every work-package stopping point, run `git status --short`, record validatio
 
 Build and test commands are safe to repeat. Local publication of snapshots may replace or add local snapshot artifacts and should be treated as disposable verification output. WP4 staging artifacts under `.gradle/wp4-maven-repo` are ignored generated output and may be regenerated; do not place staging below the root `build` directory because root `clean` removes it.
 
-Do not commit a dual-build compatibility state. WP4 is prepared and validated directly in the current worktree at the user's request, with the old include, inheritance, `project(...)` dependency, and publication path removed in the same change. If validation fails, fix the current cutover without resetting unrelated user work; after commit, recovery is a focused revert rather than preservation of a legacy switch.
+Do not commit a dual-build compatibility state. WP4 was prepared and validated directly in the current worktree at the user's request, with the old include, inheritance, `project(...)` dependency, and publication path removed in the same change. If a later regression requires rollback, use a focused revert rather than preservation of a legacy switch or reset of unrelated user work.
 
 GitHub Packages publication is externally visible and is not a disposable local action. Use new snapshot builds during experimentation and protected tags for releases. Never reuse or overwrite a stable release version. If incorrect metadata is published under a snapshot, fix the build and publish a newer snapshot. If an incorrect stable version is published, leave it immutable, document it, and publish a corrected patch version.
 
@@ -670,6 +681,43 @@ protocol-binding descriptor exactly once. The `ccrs-jacamo` jar does not contain
 `examples.asl`; its sole copy is application-owned at
 `src/agt/examples/contingency/examples.asl`.
 
+The manually dispatched WP4 clean-checkout proof ran at commit `a8cde92b`:
+
+    https://github.com/stefanmhsg/ccrs-bdi/actions/runs/31268336198
+    Build, test, and publish: success in 4m18s
+    Verify clean remote consumer: success in 1m06s
+
+The run emitted only action-version maintenance warnings; no build,
+publication, artifact, or consumer check failed.
+
+WP5 verified local-source substitution with the dedicated composite:
+
+    .\ccrs-workspace\gradlew.bat -p ccrs-workspace \
+      --no-daemon --rerun-tasks verifyAll
+    40 actionable tasks: 40 executed
+    BUILD SUCCESSFUL in 21s
+
+    .\ccrs-workspace\gradlew.bat -p ccrs-workspace \
+      :ccrs-jacamo:dependencyInsight --dependency ccrs-core \
+      --configuration runtimeClasspath
+    io.github.stefanmhsg.ccrs:ccrs-core:0.1.0-SNAPSHOT
+      -> project :ccrs-core (by composite build)
+
+The same module, invoked through its own wrapper against the isolated
+`.gradle/wp5-maven-repo`, selected a timestamped Maven snapshot instead and
+completed `clean build`. After staging the other module publications, the
+standalone consumer reported:
+
+    - sources: 5 resolved
+    - javadocs: 5 resolved
+    - poms: 5 resolved
+    - Gradle module metadata: 5 resolved
+    Published module contracts verified
+    - strategy providers: [ccrs.capabilities.a2a.A2aConsultationStrategyProvider, ccrs.capabilities.llm.langchain4j.Langchain4jPredictionStrategyProvider]
+    - protocol binding: ccrs.hypermedea.CcrsHttpBinding
+    - LangChain4j ChatModel API: compile and invocation passed
+    BUILD SUCCESSFUL
+
 Current coordinates:
 
     io.github.stefanmhsg.ccrs:ccrs-core:0.1.0-SNAPSHOT
@@ -758,3 +806,15 @@ AgentSpeak example into the app tree, rewrote the publication workflow, and
 proved the graph through an explicit isolated staging repository. WP4 remains
 open only until the uncommitted cutover is pushed and the rewritten workflow
 produces a successful clean-checkout run URL.
+
+Revision note (2026-08-08, WP4 completion): Recorded successful clean-checkout
+run 31268336198 at commit `a8cde92b`, checked the final WP4 todo, marked WP4
+Done, and promoted WP5 to Now. The run's action-version deprecation annotations
+were recorded as release-hardening maintenance rather than WP4 failures.
+
+Revision note (2026-08-08, WP5 completion): Added the optional
+`ccrs-workspace` composite with explicit coordinate substitutions, delegated
+aggregate tasks, its own Gradle 9.2.0 wrapper, developer documentation, and a
+source-path workflow check. Recorded local source-versus-artifact dependency
+evidence and the full staged consumer result, marked every WP5 todo complete,
+and promoted the atomic BDI application extraction in WP6 to Now.
