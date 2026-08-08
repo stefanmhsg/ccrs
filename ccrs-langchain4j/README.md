@@ -45,6 +45,12 @@ isolated Maven repository containing the aligned core artifact. Publish a
 snapshot with `publishMavenJavaPublicationToGitHubPackagesRepository`. The
 build does not read the BDI root or another capability module.
 
+The optional dotenv fallback supplier is process-wide and safely published to
+concurrent readers. Configure it during application startup. Provider clients
+may be reused only according to the thread-safety contract of the supplied
+LangChain4j `ChatModel`; mutually untrusted tenants should use separate
+processes and credentials.
+
 ## Architecture Overview
 
 ```text

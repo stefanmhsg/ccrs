@@ -61,6 +61,20 @@ This keeps Hypermedea replaceable: another HTTP artifact can implement
 `InteractionHistoryProvider` and install itself without changing the JaCaMo
 adapter.
 
+## Runtime Scope and Isolation
+
+`CcrsJacamoRuntime` is process-wide application wiring. Its provider,
+configuration, and factory supplier references are safely published to other
+threads, but they are not per-agent or per-user values. Install them during MAS
+startup and avoid competing runtime writers. Each contingency evaluation uses
+one consistent core configuration snapshot.
+
+The JaCaMo adapter can serve multiple mutually trusted agents in one JVM when
+each agent has its own `JasonCcrsContext`. The adapter does not authenticate an
+agent name and does not provide a tenant-security boundary. Run mutually
+untrusted users or tenants in separate JVMs with separate runtime wiring,
+credentials, and logs.
+
 ## Optional Strategy Capabilities
 
 The contingency internal action creates its `ContingencyCcrs` through

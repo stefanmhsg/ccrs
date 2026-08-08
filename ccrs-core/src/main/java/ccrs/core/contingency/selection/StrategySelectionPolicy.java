@@ -6,7 +6,9 @@ package ccrs.core.contingency.selection;
  * <p>The policy is the architectural boundary between the core CCRS orchestrator
  * and a concrete strategy-selection approach. Implementations may use recent
  * traces, fixed heuristics, or any other agent-agnostic signal, while
- * {@code ContingencyCcrs} only depends on this interface.</p>
+ * {@code ContingencyCcrs} only depends on this interface. One policy instance
+ * may serve concurrent evaluations, so stateful implementations must provide
+ * their own thread-safety. The returned plan belongs to one evaluation.</p>
  */
 public interface StrategySelectionPolicy {
 

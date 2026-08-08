@@ -15,7 +15,9 @@ import ccrs.core.rdf.CcrsContext;
  * - Can produce a recovery suggestion
  * 
  * Strategies should be stateless - all state comes from the
- * Situation and CcrsContext parameters.
+ * Situation and CcrsContext parameters. A registry may be evaluated by
+ * multiple threads, so an implementation that keeps state must provide its
+ * own thread-safety.
  */
 public interface CcrsStrategy {
     

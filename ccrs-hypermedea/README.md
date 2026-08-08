@@ -31,6 +31,12 @@ The upstream `org.hypermedea:hypermedea` dependency remains pinned to version
 representation handler with the CCRS runtime dependency graph so compatibility
 regressions cannot pass publication checks.
 
+Hypermedea 0.4.2 caches a `ServiceLoader` that Java specifies as unsafe for
+concurrent access. `CcrsHttpOperation` therefore serializes response payload
+conversion through that loader. HTTP requests, response lifecycles, and
+per-agent history operations remain concurrent. This is a compatibility fix
+for the pinned version, not a dependency upgrade.
+
 With GitHub Packages credentials configured in the user-level Gradle
 properties file, run:
 
@@ -91,9 +97,11 @@ A static registry that holds two key components:
 
 ### JasonInteractionLog
 A centralized, thread-safe log implementation.
-- **Partitioned Storage:** Stores interaction history separated by Agent Name (`Map<AgentName, Deque<Interaction>>`).
+- **Partitioned Storage:** Stores interaction history separately by agent name, with one lock per agent history.
 - **Shared Access:** Allows multiple agents to write to the same log instance concurrently without mixing data.
 - **Unified Querying:** Allows CCRS strategies to query "my recent history" by simply passing the current agent's name.
+- **Bounded Snapshots:** Readers receive immutable snapshots while writers retain only the configured maximum history.
+- **Single Completion:** A response/error race consumes an in-flight operation only once.
 
 ### CcrsHypermedeaArtifact
 A wrapper around the standard `HypermedeaArtifact`.
@@ -118,6 +126,20 @@ The bridge between the Jason Agent and the Shared Log.
 - Reads interaction history through `InteractionHistoryProvider`, installed by
   this Hypermedea package through `CcrsJacamoRuntime`.
 - When queried (e.g., via `evaluate`), it retrieves history specifically for the agent defined in its constructor.
+
+## Concurrency and Trust Boundary
+
+The shared log supports concurrent activity from multiple mutually trusted
+agents in one JVM. History reads and writes for one agent are consistent, and
+unrelated agent histories do not share a lock. Missing-history diagnostics do
+not enumerate other tracked agent names.
+
+Agent-name partitioning is routing, not authentication: the public history API
+can be called with any name, and the static registry is application-wide.
+Consequently this module is not an in-process multi-tenant security boundary.
+Use separate JVMs/processes for mutually untrusted users or tenants, along with
+separate credentials and log destinations. Separate deployments are isolated
+automatically because the registry and history are JVM-local.
 
 ---
 

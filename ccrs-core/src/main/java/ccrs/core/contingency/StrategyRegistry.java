@@ -1,7 +1,6 @@
 package ccrs.core.contingency;
 
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -14,6 +13,9 @@ import java.util.logging.Logger;
 /**
  * Registry for contingency strategies.
  * Manages strategy registration, lookup, and filtering.
+ *
+ * <p>All operations are thread-safe. Query methods return snapshots, so a
+ * caller can iterate a result while another thread changes the registry.</p>
  */
 public class StrategyRegistry {
     
@@ -27,7 +29,7 @@ public class StrategyRegistry {
      * @param strategy The strategy to register
      * @throws IllegalArgumentException if strategy with same ID already exists
      */
-    public void register(CcrsStrategy strategy) {
+    public synchronized void register(CcrsStrategy strategy) {
         if (strategies.containsKey(strategy.getId())) {
             throw new IllegalArgumentException(
                 "Strategy already registered: " + strategy.getId());
@@ -39,7 +41,7 @@ public class StrategyRegistry {
     /**
      * Register multiple strategies.
      */
-    public void registerAll(CcrsStrategy... strategies) {
+    public synchronized void registerAll(CcrsStrategy... strategies) {
         for (CcrsStrategy strategy : strategies) {
             register(strategy);
         }
@@ -51,7 +53,7 @@ public class StrategyRegistry {
      * @param strategyId The strategy ID to remove
      * @return The removed strategy, or null if not found
      */
-    public CcrsStrategy unregister(String strategyId) {
+    public synchronized CcrsStrategy unregister(String strategyId) {
         logger.info("Unregistering strategy: " + strategyId);
         return strategies.remove(strategyId);
     }
@@ -59,21 +61,21 @@ public class StrategyRegistry {
     /**
      * Get a strategy by ID.
      */
-    public Optional<CcrsStrategy> getStrategy(String strategyId) {
+    public synchronized Optional<CcrsStrategy> getStrategy(String strategyId) {
         return Optional.ofNullable(strategies.get(strategyId));
     }
     
     /**
      * Get all registered strategies.
      */
-    public Collection<CcrsStrategy> getAll() {
-        return Collections.unmodifiableCollection(strategies.values());
+    public synchronized Collection<CcrsStrategy> getAll() {
+        return List.copyOf(strategies.values());
     }
     
     /**
      * Get strategies by category.
      */
-    public List<CcrsStrategy> getByCategory(CcrsStrategy.Category category) {
+    public synchronized List<CcrsStrategy> getByCategory(CcrsStrategy.Category category) {
         return strategies.values().stream()
             .filter(s -> s.getCategory() == category)
             .collect(Collectors.toList());
@@ -82,7 +84,7 @@ public class StrategyRegistry {
     /**
      * Get strategies by escalation level.
      */
-    public List<CcrsStrategy> getByLevel(int level) {
+    public synchronized List<CcrsStrategy> getByLevel(int level) {
         return strategies.values().stream()
             .filter(s -> s.getEscalationLevel() == level)
             .collect(Collectors.toList());
@@ -91,7 +93,7 @@ public class StrategyRegistry {
     /**
      * Get all enabled strategies, filtered by configuration.
      */
-    public List<CcrsStrategy> getEnabled(ContingencyConfiguration config) {
+    public synchronized List<CcrsStrategy> getEnabled(ContingencyConfiguration config) {
         return strategies.values().stream()
             .filter(config::isStrategyEnabled)
             .collect(Collectors.toList());
@@ -101,7 +103,7 @@ public class StrategyRegistry {
      * Get strategies sorted by the default escalation level order.
      * Learned runtime ordering may reorder strategies within a level later.
      */
-    public List<CcrsStrategy> getOrderedForEvaluation(ContingencyConfiguration config) {
+    public synchronized List<CcrsStrategy> getOrderedForEvaluation(ContingencyConfiguration config) {
         List<CcrsStrategy> enabled = getEnabled(config);
         
         // Custom comparator: L1, L2, L3, L4, then L0 (last resort)
@@ -122,26 +124,26 @@ public class StrategyRegistry {
     /**
      * Check if registry has any strategies.
      */
-    public boolean isEmpty() {
+    public synchronized boolean isEmpty() {
         return strategies.isEmpty();
     }
     
     /**
      * Get count of registered strategies.
      */
-    public int size() {
+    public synchronized int size() {
         return strategies.size();
     }
     
     /**
      * Clear all registered strategies.
      */
-    public void clear() {
+    public synchronized void clear() {
         strategies.clear();
     }
     
     @Override
-    public String toString() {
+    public synchronized String toString() {
         return String.format("StrategyRegistry{%d strategies: %s}",
             strategies.size(), strategies.keySet());
     }

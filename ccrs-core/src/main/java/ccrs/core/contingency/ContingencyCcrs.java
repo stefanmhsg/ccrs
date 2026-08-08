@@ -28,8 +28,8 @@ public class ContingencyCcrs {
     private static final Logger logger = Logger.getLogger(ContingencyCcrs.class.getName());
     
     private final StrategyRegistry registry;
-    private ContingencyConfiguration config;
-    private StrategySelectionPolicy strategySelectionPolicy;
+    private volatile ContingencyConfiguration config;
+    private volatile StrategySelectionPolicy strategySelectionPolicy;
     
     public ContingencyCcrs() {
         this(ContingencyConfiguration.defaults());
@@ -77,7 +77,10 @@ public class ContingencyCcrs {
     }
     
     /**
-     * Set configuration.
+     * Set configuration for subsequent evaluations.
+     *
+     * <p>An evaluation snapshots its configuration when it starts, so a
+     * concurrent update cannot change policy halfway through that invocation.</p>
      */
     public void setConfig(ContingencyConfiguration config) {
         this.config = config != null ? config : ContingencyConfiguration.defaults();
@@ -91,7 +94,7 @@ public class ContingencyCcrs {
     }
     
     /**
-     * Set strategy selection policy.
+     * Set strategy selection policy for subsequent evaluations.
      * Available policies:
      * - DefaultStrategySelectionPolicy: No gating or reordering; strategies evaluated in default escalation order.
      * - TraceBasedStrategySelectionPolicy: Uses historical trace data to make gating and ordering decisions based on expected improvement and confidence thresholds.
@@ -126,10 +129,17 @@ public class ContingencyCcrs {
     public CcrsTrace evaluateWithTrace(Situation situation, CcrsContext context) {
         long startTime = System.currentTimeMillis();
         CcrsTrace.Builder traceBuilder = CcrsTrace.builder(situation);
+        ContingencyConfiguration evaluationConfig = config;
+        StrategySelectionPolicy evaluationSelectionPolicy = strategySelectionPolicy;
         
         List<StrategyResult> allSuggestions = new ArrayList<>();
-        List<CcrsStrategy> defaultOrder = registry.getOrderedForEvaluation(config);
-        StrategySelectionPlan selectionPlan = buildSelectionPlan(situation, context, defaultOrder);
+        List<CcrsStrategy> defaultOrder = registry.getOrderedForEvaluation(evaluationConfig);
+        StrategySelectionPlan selectionPlan = buildSelectionPlan(
+            situation,
+            context,
+            defaultOrder,
+            evaluationConfig,
+            evaluationSelectionPolicy);
         List<CcrsStrategy> orderedStrategies = orderStrategies(defaultOrder, selectionPlan);
         
         int currentLevel = -1;
@@ -145,7 +155,7 @@ public class ContingencyCcrs {
                 evaluatedCandidateAtCurrentLevel = false;
                 logger.info(String.format(
                     "[StrategySelectionPolicy] Entering escalation level L%d with policy %s",
-                    level, config.getEscalationPolicy()));
+                    level, evaluationConfig.getEscalationPolicy()));
             }
 
             // L0 is a last-resort fallback, not a confidence competitor.
@@ -154,7 +164,7 @@ public class ContingencyCcrs {
                 break;
             }
 
-            if (config.getEscalationPolicy() == ContingencyConfiguration.EscalationPolicy.BEST_PER_LEVEL
+            if (evaluationConfig.getEscalationPolicy() == ContingencyConfiguration.EscalationPolicy.BEST_PER_LEVEL
                 && evaluatedCandidateAtCurrentLevel) {
                 logger.info(String.format(
                     "[StrategySelectionPolicy] Skipping %s in L%d because BEST_PER_LEVEL already evaluated the most promising applicable strategy at this level",
@@ -212,9 +222,9 @@ public class ContingencyCcrs {
                         logger.info(String.format(
                             "[ContingencyCcrs] %s produced suggestion with confidence %.3f",
                             strategy.getId(), result.asSuggestion().getConfidence()));
-                        if (config.getEscalationPolicy() == ContingencyConfiguration.EscalationPolicy.SEQUENTIAL) {
+                        if (evaluationConfig.getEscalationPolicy() == ContingencyConfiguration.EscalationPolicy.SEQUENTIAL) {
                             long evalTime = System.currentTimeMillis() - evalStart;
-                            if (shouldRecordEvaluation(strategy, result)) {
+                            if (shouldRecordEvaluation(strategy, result, evaluationConfig)) {
                                 traceBuilder.addEvaluation(
                                     strategy.getId(),
                                     level,
@@ -241,7 +251,7 @@ public class ContingencyCcrs {
             
             long evalTime = System.currentTimeMillis() - evalStart;
             
-            if (shouldRecordEvaluation(strategy, result)) {
+            if (shouldRecordEvaluation(strategy, result, evaluationConfig)) {
                 traceBuilder.addEvaluation(
                     strategy.getId(),
                     level,
@@ -257,7 +267,7 @@ public class ContingencyCcrs {
         List<StrategyResult> rankedResults = allSuggestions.stream()
             .sorted(Comparator.comparingDouble(
                 (StrategyResult r) -> r.asSuggestion().getConfidence()).reversed())
-            .limit(config.getMaxSuggestions())
+            .limit(evaluationConfig.getMaxSuggestions())
             .collect(Collectors.toList());
         if (!rankedResults.isEmpty()) {
             rankedResults = keepOpportunisticGuidanceOnlyForWinningSuggestion(rankedResults);
@@ -278,7 +288,8 @@ public class ContingencyCcrs {
      * Quick check if any strategy might help.
      */
     public boolean hasApplicableStrategy(Situation situation, CcrsContext context) {
-        for (CcrsStrategy strategy : registry.getEnabled(config)) {
+        ContingencyConfiguration evaluationConfig = config;
+        for (CcrsStrategy strategy : registry.getEnabled(evaluationConfig)) {
             CcrsStrategy.Applicability applicability = strategy.appliesTo(situation, context);
             if (applicability != CcrsStrategy.Applicability.NOT_APPLICABLE) {
                 return true;
@@ -326,32 +337,34 @@ public class ContingencyCcrs {
     private StrategySelectionPlan buildSelectionPlan(
             Situation situation,
             CcrsContext context,
-            List<CcrsStrategy> defaultOrder) {
+            List<CcrsStrategy> defaultOrder,
+            ContingencyConfiguration evaluationConfig,
+            StrategySelectionPolicy evaluationSelectionPolicy) {
         if (isLearnedSelectionBypassRequested(context)) {
             logger.info(
                 "[StrategySelectionPolicy] Stop requested one-shot reconsideration; using default order and no learned gates for this invocation");
             return null;
         }
 
-        if (!config.isLearnedSelectionEnabled()) {
+        if (!evaluationConfig.isLearnedSelectionEnabled()) {
             logger.info("[StrategySelectionPolicy] Strategy selection policy disabled; using default escalation order");
             return null;
         }
 
-        List<CcrsTrace> recentHistory = context.getCcrsHistory(config.getLearningHistoryLimit());
+        List<CcrsTrace> recentHistory = context.getCcrsHistory(evaluationConfig.getLearningHistoryLimit());
         StrategySelectionRequest request = new StrategySelectionRequest(
             situation,
             context,
             defaultOrder,
-            config,
+            evaluationConfig,
             recentHistory);
         StrategySelectionPlan plan;
         try {
-            plan = strategySelectionPolicy.createPlan(request);
+            plan = evaluationSelectionPolicy.createPlan(request);
         } catch (Exception e) {
             logger.warning(String.format(
                 "[StrategySelectionPolicy] %s failed to create plan: %s; using default escalation order",
-                strategySelectionPolicy.getDescription(),
+                evaluationSelectionPolicy.getDescription(),
                 e.getMessage()));
             return null;
         }
@@ -359,7 +372,7 @@ public class ContingencyCcrs {
         if (plan == null) {
             logger.warning(String.format(
                 "[StrategySelectionPolicy] %s returned no plan; using default escalation order",
-                strategySelectionPolicy.getDescription()));
+                evaluationSelectionPolicy.getDescription()));
             return null;
         }
 
@@ -368,7 +381,7 @@ public class ContingencyCcrs {
         } catch (RuntimeException e) {
             logger.warning(String.format(
                 "[StrategySelectionPolicy] %s created a plan but could not describe it: %s",
-                strategySelectionPolicy.getDescription(),
+                evaluationSelectionPolicy.getDescription(),
                 e.getMessage()));
         }
         return plan;
@@ -385,8 +398,11 @@ public class ContingencyCcrs {
             .orElse(false);
     }
 
-    private boolean shouldRecordEvaluation(CcrsStrategy strategy, StrategyResult result) {
-        if (config.isTraceEnabled()) {
+    private boolean shouldRecordEvaluation(
+            CcrsStrategy strategy,
+            StrategyResult result,
+            ContingencyConfiguration evaluationConfig) {
+        if (evaluationConfig.isTraceEnabled()) {
             return true;
         }
         return strategy != null

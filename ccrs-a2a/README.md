@@ -38,6 +38,12 @@ on the central
 [`ContingencyConfiguration.java`](../ccrs-core/src/main/java/ccrs/core/contingency/ContingencyConfiguration.java).
 The A2A module owns only the provider-specific channel and transport settings.
 
+The optional dotenv fallback supplier is process-wide and safely published to
+concurrent readers. Install it during application startup. An
+`A2aConsultationChannel` synchronizes its mutable agent-card caches, but a
+single channel and one process-wide fallback are not tenant-specific security
+boundaries; isolate untrusted tenants in separate processes.
+
 ## Architecture Overview
 
 ```text

@@ -14,6 +14,11 @@ import ccrs.jacamo.jason.contingency.InteractionHistoryProvider;
  * <p>This class keeps JaCaMo/Jason integration independent from concrete
  * HTTP artifact implementations and optional capability modules. Applications
  * or optional modules can install providers here before or during MAS startup.</p>
+ *
+ * <p>The installed values are process-wide application configuration, not
+ * per-agent or per-tenant state. Volatile publication makes concurrent reads
+ * safe, but applications should configure this class during startup and avoid
+ * competing writes. Isolate mutually untrusted tenants in separate JVMs.</p>
  */
 public final class CcrsJacamoRuntime {
 

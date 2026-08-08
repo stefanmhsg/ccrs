@@ -5,7 +5,7 @@ import java.util.function.Supplier;
 
 final class A2aConfigResolver {
 
-    private static Supplier<Map<String, String>> dotenvSupplier = null;
+private static volatile Supplier<Map<String, String>> dotenvSupplier = null;
 
     private A2aConfigResolver() {
     }
@@ -21,8 +21,9 @@ final class A2aConfigResolver {
         value = System.getProperty(key);
         if (isSet(value)) return value;
 
-        if (dotenvSupplier != null) {
-            value = dotenvSupplier.get().get(key);
+Supplier<Map<String, String>> fallback = dotenvSupplier;
+if (fallback != null) {
+value = fallback.get().get(key);
             if (isSet(value)) return value;
         }
 

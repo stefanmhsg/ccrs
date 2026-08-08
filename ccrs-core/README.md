@@ -45,3 +45,16 @@ coordinate-based build chain:
 
 The staging property changes only the Maven publication destination. It does
 not introduce a sibling source dependency or an automatic Maven Local fallback.
+
+## Concurrency
+
+`ContingencyCcrs` supports concurrent evaluations. Each invocation snapshots
+its configuration and selection policy at entry, and `StrategyRegistry` uses
+thread-safe mutation plus detached immutable query snapshots. A configuration
+or policy update applies to evaluations that start afterward, not midway
+through one already running.
+
+Consumers must keep registered `CcrsStrategy` implementations stateless or
+thread-safe. Mutable DTO builders are intended for one caller and one request;
+share only their built values. A `CcrsContext` should normally be owned by one
+agent, unless its implementation explicitly guarantees safe sharing.

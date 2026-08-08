@@ -10,7 +10,10 @@ import ccrs.core.contingency.dto.Interaction;
  *
  * <p>Hypermedia artifacts, HTTP bindings, tests, or other environment
  * integrations can provide interaction history without making
- * {@link JasonCcrsContext} depend on a concrete artifact implementation.</p>
+ * {@link JasonCcrsContext} depend on a concrete artifact implementation.
+ * A provider installed in {@code CcrsJacamoRuntime} is shared process-wide and
+ * must support concurrent calls. The agent name selects a logical partition;
+ * this interface does not authenticate it or enforce tenant access control.</p>
  */
 public interface InteractionHistoryProvider {
 

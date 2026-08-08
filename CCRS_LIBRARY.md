@@ -640,6 +640,41 @@ Known remaining coupling:
 
 - Some strategy implementations still contain app/domain assumptions.
 
+## Concurrency and Isolation Contract
+
+The libraries support concurrent use by multiple agents in one trusted
+application JVM, with the following boundaries:
+
+- `ContingencyCcrs` snapshots its configuration and selection policy at the
+  start of each evaluation, so neither reference changes midway through that
+  invocation. Configuration and policy remain separate setters; changing both
+  is not one atomic reconfiguration transaction and should be done at startup.
+- `StrategyRegistry` is thread-safe and returns detached immutable query
+  snapshots. Registered strategies are still required to be stateless or
+  otherwise thread-safe, as specified by `CcrsStrategy`.
+- Request DTO builders are mutable construction helpers and must not be shared
+  between threads. Their built DTO values defensively copy their collections.
+- A `CcrsContext` belongs to an evaluation caller. Share one only when that
+  implementation explicitly documents thread safety; normally each agent has
+  its own context.
+- `JasonInteractionLog` synchronizes each agent history independently and
+  binds an in-flight operation to the agent that initiated it. A response/error
+  race completes that operation at most once.
+- Hypermedea remains pinned to `0.4.2`. Because that version caches a
+  non-thread-safe `ServiceLoader`, `ccrs-hypermedea` serializes representation
+  payload conversion while leaving HTTP requests and unrelated processing
+  concurrent.
+- `CcrsJacamoRuntime`, `CcrsGlobalRegistry`, and capability dotenv fallback
+  installation are process-wide application wiring. Configure them during
+  startup; they are not per-agent settings.
+
+Agent-name history partitioning is logical routing, not authentication or an
+access-control boundary. Multiple mutually trusted agents may share a JVM, but
+mutually untrusted users or tenants must use separate JVMs/processes (and
+separate credentials and logs). Distinct deployments already receive this
+isolation naturally because none of the process-wide state crosses a JVM
+boundary.
+
 ## Do Not Regress
 
 - Do not make `ccrs-jacamo` depend on Hypermedea.
