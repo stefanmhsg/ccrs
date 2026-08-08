@@ -1,10 +1,10 @@
 # CCRS Library Consumer
 
 This is a small standalone Gradle project that consumes the CCRS modules as
-published Maven libraries. It is intentionally not included in the root
-[settings.gradle](../../settings.gradle), so it behaves like a separate user
-repository. It can resolve from either an explicitly selected staging
-repository or GitHub Packages, without using Maven Local.
+published Maven libraries. It has its own settings and wrapper and is not part
+of the [composite workspace](../../ccrs-workspace/README.md), so it behaves like
+a separate user repository. It can resolve from either an explicitly selected
+staging repository or GitHub Packages, without using Maven Local.
 
 ## What It Shows
 
@@ -56,7 +56,8 @@ $stagingRepository = "$PWD/.gradle/ccrs-staging-repo"
 Then resolve only that repository and run this consumer:
 
 ```powershell
-.\gradlew.bat -p examples/ccrs-library-consumer `
+.\examples\ccrs-library-consumer\gradlew.bat `
+  -p examples/ccrs-library-consumer `
   "-PccrsRepositoryUrl=$stagingRepository" `
   --refresh-dependencies clean build run
 ```
@@ -83,7 +84,8 @@ only the remote CCRS snapshots, verify every published artifact kind, and run
 the example with:
 
 ```powershell
-.\gradlew.bat -p examples/ccrs-library-consumer `
+.\examples\ccrs-library-consumer\gradlew.bat `
+  -p examples/ccrs-library-consumer `
   --refresh-dependencies `
   clean build run
 ```
@@ -103,7 +105,7 @@ the selected CCRS modules:
 ```gradle
 repositories {
     maven {
-        url = uri('https://maven.pkg.github.com/stefanmhsg/ccrs-bdi')
+        url = uri('https://maven.pkg.github.com/stefanmhsg/ccrs')
         credentials {
             username = findProperty('gpr.user') ?: System.getenv('GITHUB_ACTOR')
             password = findProperty('gpr.key') ?: System.getenv('GITHUB_TOKEN')

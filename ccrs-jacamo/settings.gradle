@@ -22,7 +22,7 @@ dependencyResolutionManagement {
                         url = uri(ccrsRepositoryUrl.get())
                     } else {
                         name = 'GitHubPackages'
-                        url = uri('https://maven.pkg.github.com/stefanmhsg/ccrs-bdi')
+                        url = uri('https://maven.pkg.github.com/stefanmhsg/ccrs')
                         credentials {
                             username = githubPackagesUser.orNull
                             password = githubPackagesToken.orNull
