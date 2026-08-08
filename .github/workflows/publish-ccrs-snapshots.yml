@@ -1,5 +1,6 @@
 name: Publish CCRS snapshots
 
+# Publication is intentionally manual until tag-driven releases are hardened.
 on:
   workflow_dispatch:
 
