@@ -103,7 +103,10 @@ unchanged.
 - [x] (2026-08-08 17:05Z) Completed WP4 as one all-module cutover at commit `a8cde92b`: [Publish CCRS snapshots run 31268336198](https://github.com/stefanmhsg/ccrs-bdi/actions/runs/31268336198) built, staged, tested, documented, and published all five standalone modules, then passed the fresh remote consumer.
 - [x] (2026-08-08 17:31Z) Completed WP5: added the wrapper-owned `ccrs-workspace` composite, verified all five local builds, proved JaCaMo selects local core only inside the composite, and ran JaCaMo plus the full consumer against isolated staged artifacts outside it.
 - [x] (2026-08-08 17:58Z) Started WP6 from clean pushed baseline `fbfb48d`: created a full-history sibling `ccrs` clone, removed application-owned paths from its HEAD, moved every active package URL to `stefanmhsg/ccrs`, added an independent consumer wrapper, passed the forced composite build, staged all five standalone publications, and passed the artifact-only consumer.
-- [ ] Complete WP6 so the already coordinate-only BDI application no longer lives in the library repository.
+- [x] (2026-08-08 18:15Z) Established `stefanmhsg/ccrs` as the package-owning research repository at commit `86e6c97`; snapshot run [31271103838](https://github.com/stefanmhsg/ccrs/actions/runs/31271103838) published all five modules and passed the fresh remote consumer.
+- [x] (2026-08-08 18:20Z) Created the new application-only `stefanmhsg/ccrs-bdi` repository at commit `b144f4c`; consumer run [31271634626](https://github.com/stefanmhsg/ccrs-bdi/actions/runs/31271634626) passed the `none`, `hypermedea`, `langchain4j`, `a2a`, and `all` package profiles.
+- [ ] Delete the redundant `stefanmhsg/ccrs-extraction-staging` repository. Its HEAD was verified as `86e6c97`, identical to the authoritative `ccrs` repository and local clone, but the current GitHub CLI token lacks the required `delete_repo` scope.
+- [ ] Complete WP6 after the verified staging repository is removed.
 - [ ] Complete WP7 release gates before publishing the first non-snapshot version.
 
 ## Surprises & Discoveries
@@ -174,6 +177,15 @@ unchanged.
 - Observation: Explicit composite substitution and direct artifact resolution preserve the same coordinate declaration while selecting different component forms only at invocation time.
   Evidence: `ccrs-workspace :ccrs-jacamo:dependencyInsight` reported `io.github.stefanmhsg.ccrs:ccrs-core:0.1.0-SNAPSHOT -> project :ccrs-core (by composite build)`. Direct `ccrs-jacamo dependencyInsight` against `.gradle/wp5-maven-repo` reported the timestamped Maven snapshot and no project component; both builds passed.
 
+- Observation: GitHub Maven/Gradle packages are repository-scoped, so pushing the existing coordinates from a separately created `ccrs` repository did not transfer package ownership.
+  Evidence: Publication run [31270920866](https://github.com/stefanmhsg/ccrs/actions/runs/31270920866) reached the registry but GitHub rejected `ccrs-core` with HTTP 422. GitHub's package-permissions documentation states that Maven and Gradle packages support only repository-scoped permissions and that associated packages move when their repository is transferred. Renaming the original package-owning repository from `ccrs-bdi` to `ccrs` preserved the package association; run 31271103838 then published successfully.
+
+- Observation: A newly created repository may index a workflow only after a repository-native follow-up push, while also scheduling the initial push retroactively.
+  Evidence: `ccrs-bdi` initially returned no workflows or runs. Commit `b144f4c` added a documentation-only workflow comment; GitHub then ran both `55db4d2` and `b144f4c`, and both package-consumer matrices passed.
+
+- Observation: The application repository's read-only `GITHUB_TOKEN` can consume the public packages associated with the sibling `ccrs` repository under the same owner.
+  Evidence: Run 31271634626 used only `contents: read`, `packages: read`, `GITHUB_ACTOR`, and `GITHUB_TOKEN`; all five fresh-Gradle-home capability profiles resolved and built successfully without a repository secret.
+
 ## Decision Log
 
 - Decision: Use GitHub Packages as the first remote Maven registry, associated with `stefanmhsg/ccrs-bdi`.
@@ -238,15 +250,15 @@ unchanged.
   Rationale: A module must be buildable without the root wrapper. The repository is maintained from Windows, so the workflow's explicit `chmod +x` makes clean Linux runner behavior deterministic while every wrapper jar is re-included through `.gitignore`.
   Date/Author: 2026-08-08 / Codex
 
-- Decision: Perform WP6 by cloning the complete history into a new `ccrs`
-  repository for the libraries and retaining the existing `ccrs-bdi`
-  repository for the application, instead of moving the application to a
-  newly named repository.
-  Rationale: This produces the user-selected research-artifact naming directly,
-  preserves relevant history in both repositories, and avoids renaming the
-  established application repository. The package-host transition is included
-  in the same coordinated cutover and is validated before library sources are
-  removed from `ccrs-bdi`.
+- Decision: Perform WP6 by preparing both role-specific HEADs from full history,
+  renaming the original package-owning repository from `ccrs-bdi` to `ccrs`,
+  and creating a new application-only repository at the released `ccrs-bdi`
+  name.
+  Rationale: GitHub Maven/Gradle packages are repository-scoped. Renaming the
+  original repository carries the five established package associations to the
+  user-selected research-artifact name; creating the application repository
+  afterward restores its established name without preserving a dual source
+  topology. Both repositories retain the relevant common history.
   Date/Author: 2026-08-08 / User direction and Codex
 
 - Decision: Make `ccrs-workspace` a sixth, non-publishing Gradle build with explicit substitutions for all five library coordinates and delegate aggregate tasks to included-build lifecycle tasks.
@@ -267,9 +279,9 @@ WP4 performed one all-library cutover: all five modules left the root subproject
 
 A composite build is an optional Gradle workspace that includes several complete builds and substitutes matching Maven coordinates with local projects. It preserves fast cross-module development without making any module depend on the workspace. The authoritative proof remains running each build alone and resolving its published form in a clean consumer.
 
-GitHub Packages exposes a Maven-compatible Gradle registry. The initial repository URL is:
+GitHub Packages exposes a Maven-compatible Gradle registry. The current repository URL is:
 
-    https://maven.pkg.github.com/stefanmhsg/ccrs-bdi
+    https://maven.pkg.github.com/stefanmhsg/ccrs
 
 In GitHub Actions, publication uses the workflow's `GITHUB_TOKEN` with `packages: write` and source checkout with `contents: read`. A local publisher or consumer uses runtime properties or environment variables, never tracked files. Use property names `gpr.user` and `gpr.key`, with `GITHUB_ACTOR` and `GITHUB_TOKEN` as CI fallbacks. Local package reads require a classic personal access token with `read:packages`; local publishing also requires `write:packages`.
 
@@ -502,27 +514,34 @@ Todos:
 
 - [x] Create `stefanmhsg/ccrs` from a full-history clone and remove every app-owned path from its HEAD.
 - [x] Give the artifact consumer its own wrapper so the library repository owns no application-root Gradle build.
-- [ ] Move the publication endpoint and clean-consumer workflow to `https://maven.pkg.github.com/stefanmhsg/ccrs`, publish all five snapshots, and record a successful run.
-- [ ] Preserve the application-owned `.jcm`, `.asl`, environment, logging, experiment, and `examples.asl` content only in `ccrs-bdi`.
-- [ ] Preserve coordinate-only dependencies and authenticated repository configuration without tracked credentials.
-- [ ] Classify selected modules as `implementation` or `runtimeOnly` based on actual compile-time use.
-- [ ] Add capability profiles or properties for core/JaCaMo, Hypermedea, LangChain4j, and A2A combinations.
-- [ ] Repair or replace the known broken JaCaMo AgentSpeak test fixture so application `test` has a trustworthy result.
-- [ ] Run application smoke configurations without sibling CCRS sources or Maven Local.
-- [ ] Remove every library/workspace/publication path from `ccrs-bdi` after the new package endpoint is proven.
-- [ ] Prove each repository has one role, relevant history, no filesystem fallback, and no Maven Local fallback.
+- [x] Move the publication endpoint and clean-consumer workflow to `https://maven.pkg.github.com/stefanmhsg/ccrs`, publish all five snapshots, and record a successful run.
+- [x] Preserve the application-owned `.jcm`, `.asl`, environment, logging, experiment, and `examples.asl` content only in `ccrs-bdi`.
+- [x] Preserve coordinate-only dependencies and authenticated repository configuration without tracked credentials.
+- [x] Classify selected modules as `implementation` or `runtimeOnly` based on actual compile-time use.
+- [x] Add capability profiles or properties for core/JaCaMo, Hypermedea, LangChain4j, and A2A combinations.
+- [x] Repair or replace the known broken JaCaMo AgentSpeak test fixture so application `test` has a trustworthy result.
+- [x] Run non-agent application smoke profiles without sibling CCRS sources or Maven Local.
+- [x] Remove every library/workspace/publication path from `ccrs-bdi` after the new package endpoint is proven.
+- [x] Prove each authoritative repository has one role, relevant history, no filesystem fallback, and no Maven Local fallback.
+- [ ] Delete the temporary `stefanmhsg/ccrs-extraction-staging` repository after confirming its HEAD is preserved in `stefanmhsg/ccrs`.
 
 Concrete steps: In `ccrs`, run the composite, every standalone publication against isolated staging, and the artifact consumer. Create and push the public repository, dispatch publication, and verify its fresh consumer. In a clean `ccrs-bdi` checkout, configure GitHub Packages credentials and run:
 
-    .\gradlew.bat --refresh-dependencies classes
-    .\gradlew.bat test
-    .\gradlew.bat run
+    .\gradlew.bat -PccrsCapabilities=none --refresh-dependencies clean test classes
+    .\gradlew.bat -PccrsCapabilities=hypermedea --refresh-dependencies clean test classes
+    .\gradlew.bat -PccrsCapabilities=langchain4j --refresh-dependencies clean test classes
+    .\gradlew.bat -PccrsCapabilities=a2a --refresh-dependencies clean test classes
+    .\gradlew.bat -PccrsCapabilities=all --refresh-dependencies clean test classes
 
-Also run the existing DFS configurations documented in the application README. For an offline verification, pre-populate only the declared remote dependencies, disable network access, and ensure no filesystem reference points back to the library source repository.
+Interactive JaCaMo and DFS configurations remain explicit user-operated application runs documented in the application README; automated separation checks do not start agents. For an offline verification, pre-populate only the declared remote dependencies, disable network access, and ensure no filesystem reference points back to the library source repository.
 
 Validation and acceptance: `ccrs` contains no application build, `.jcm`, `.asl`, environment, logging, or experiment content at HEAD and publishes all five modules. `ccrs-bdi` contains no CCRS library/workspace source or publication workflow, compiles from a checkout without those directories, resolves selected versions from the new GitHub Packages endpoint, loads expected service providers, and exclusively owns the application content.
 
-Outcome and notes: In progress. The local `S:\dev\ma\ccrs` full-history clone now has a library-only HEAD and no root Gradle application build. A forced composite build executed 39 tasks successfully. Direct builds then published all five modules to `.gradle/wp6-maven-repo`, and the consumer's own wrapper resolved all five sources, Javadocs, POMs, and Gradle metadata files, loaded both strategy providers and the Hypermedea binding, compiled the public LangChain4j API, and printed the expected retry suggestion. Remote repository creation, publication, the `ccrs-bdi` ownership cutover, and final workflow evidence remain.
+Outcome and notes: Implementation and validation are complete; deletion of the redundant staging repository remains. The authoritative library repository is [stefanmhsg/ccrs](https://github.com/stefanmhsg/ccrs) at `86e6c97`. Its forced composite build executed 39 tasks successfully; direct builds published all five modules to `.gradle/wp6-maven-repo`; the independent consumer resolved all five sources, Javadocs, POMs, and Gradle metadata files, loaded both strategy providers and the Hypermedea binding, compiled the public LangChain4j API, and printed the expected retry suggestion. Remote run 31271103838 then published the same five snapshots from the package-owning repository and passed its fresh consumer.
+
+The authoritative application repository is [stefanmhsg/ccrs-bdi](https://github.com/stefanmhsg/ccrs-bdi) at `b144f4c`. It contains no library, workspace, publication workflow, library plan, Maven Local, `flatDir`, filesystem, `includeBuild`, or Gradle `project(...)` fallback. Core and JaCaMo are compile dependencies; Hypermedea, LangChain4j, and A2A are selectable runtime capabilities. A repaired minimal AgentSpeak fixture participates in ordinary tests without launching agents. All five profiles passed locally and in run 31271634626 against the final package endpoint.
+
+Before cleanup, `stefanmhsg/ccrs-extraction-staging`, the final `stefanmhsg/ccrs`, and the local library checkout were all verified at commit `86e6c97`. GitHub refused the exact repository deletion because the current CLI token lacks `delete_repo`; grant that scope and repeat the deletion before marking WP6 Done.
 
 ### WP7: Harden versioned releases and evaluate source-repository splitting
 
@@ -743,6 +762,28 @@ standalone consumer reported:
     - LangChain4j ChatModel API: compile and invocation passed
     BUILD SUCCESSFUL
 
+WP6 established the final two-repository boundary. The package-owning library
+repository completed its publication gate at commit `86e6c97`:
+
+    https://github.com/stefanmhsg/ccrs/actions/runs/31271103838
+    Build, test, and publish: success in 5m15s
+    Verify fresh remote consumer: success in 57s
+
+The application-only repository completed its fresh package-consumer matrix at
+commit `b144f4c`:
+
+    https://github.com/stefanmhsg/ccrs-bdi/actions/runs/31271634626
+    none: success
+    hypermedea: success
+    langchain4j: success
+    a2a: success
+    all: success
+
+Each matrix job used its own fresh Gradle user home and the final `ccrs`
+package endpoint. The jobs ran `clean test classes` and fixture verification;
+they did not launch JaCaMo agents. Both runs emitted only the already recorded
+Node.js/action-version maintenance annotations.
+
 Current coordinates:
 
     io.github.stefanmhsg.ccrs:ccrs-core:0.1.0-SNAPSHOT
@@ -751,7 +792,11 @@ Current coordinates:
     io.github.stefanmhsg.ccrs:ccrs-langchain4j:0.1.0-SNAPSHOT
     io.github.stefanmhsg.ccrs:ccrs-a2a:0.1.0-SNAPSHOT
 
-Initial GitHub Packages endpoint:
+Current GitHub Packages endpoint:
+
+    https://maven.pkg.github.com/stefanmhsg/ccrs
+
+Historical pre-WP6 endpoint:
 
     https://maven.pkg.github.com/stefanmhsg/ccrs-bdi
 
@@ -843,3 +888,15 @@ aggregate tasks, its own Gradle 9.2.0 wrapper, developer documentation, and a
 source-path workflow check. Recorded local source-versus-artifact dependency
 evidence and the full staged consumer result, marked every WP5 todo complete,
 and promoted the atomic BDI application extraction in WP6 to Now.
+
+Revision note (2026-08-08, WP6 implementation): Split the full-history baseline
+into the authoritative `ccrs` research artifact and `ccrs-bdi` application
+repositories. A direct publication from a newly created repository exposed
+GitHub's repository-scoped Maven/Gradle package ownership through HTTP 422, so
+the cutover preserved package identity by renaming the original repository to
+`ccrs` and recreating `ccrs-bdi` from the validated application-only HEAD.
+Recorded successful publication run 31271103838, successful five-profile BDI
+consumer run 31271634626, role/fallback audits, and the non-agent validation
+boundary. WP6 remains Now only until the redundant, commit-identical
+`ccrs-extraction-staging` repository is deleted; the current CLI token lacks
+the required `delete_repo` scope.

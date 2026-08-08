@@ -26,6 +26,11 @@ This directory is a complete Java 21 Gradle build. It resolves `ccrs-core` and
 `ccrs-jacamo` by Maven coordinate and publishes
 `io.github.stefanmhsg.ccrs:ccrs-hypermedea:0.1.0-SNAPSHOT`.
 
+The upstream `org.hypermedea:hypermedea` dependency remains pinned to version
+`0.4.2`. The integration suite exercises Hypermedea's service-loaded Turtle
+representation handler with the CCRS runtime dependency graph so compatibility
+regressions cannot pass publication checks.
+
 With GitHub Packages credentials configured in the user-level Gradle
 properties file, run:
 
@@ -146,6 +151,11 @@ No changes required in AgentSpeak code!
   `CcrsJacamoRuntime`, and `CcrsGlobalRegistry` bridges artifact operations to
   the HTTP binding via ThreadLocal.
 - **Thread Safety:** `ThreadLocal` ensures that concurrent requests from different agents do not overwrite each other's logging context.
+- **Representation handling:** Hypermedea 0.4.2 caches one Java `ServiceLoader`
+  for all content handlers. CCRS wraps HTTP responses so payload conversion is
+  serialized while requests and the remaining response lifecycle stay
+  concurrent. This prevents concurrent JaCaMo callbacks from corrupting the
+  shared lazy provider iterator.
 - **Isolation:** The shared log partitions data by agent name, ensuring that Agent A never sees Agent B's interaction history during contingency reasoning.
 - **Wrapper + SPI:** We use `CcrsHypermedeaArtifact` (Wrapper) to set the context, and a standard Hypermedea SPI Binding (`CcrsHttpBinding`) to execute the logging hooks. This works around the restricted visibility of standard Hypermedea internals.
 

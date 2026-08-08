@@ -1,6 +1,7 @@
 package ccrs.hypermedea;
 
 import org.hypermedea.op.Response;
+import org.hypermedea.op.BaseResponse;
 import org.hypermedea.op.http.HttpOperation;
 import jason.asSyntax.Literal;
 
@@ -16,6 +17,7 @@ import java.util.logging.Logger;
 public class CcrsHttpOperation extends HttpOperation {
 
     private static final Logger logger = Logger.getLogger(CcrsHttpOperation.class.getName());
+    private static final Object representationHandlerMonitor = new Object();
 
     private final InteractionLogSink sink;
     private final long createdTimestamp;
@@ -54,12 +56,25 @@ public class CcrsHttpOperation extends HttpOperation {
 
     @Override
     protected void onResponse(Response r) {
+        Response serializedResponse = withSerializedPayloadAccess(r);
         try {
             // Critical: pass data back to HypermedeaArtifact first.
-            super.onResponse(r);
+            super.onResponse(serializedResponse);
         } finally {
-            notifyResponse(r, System.currentTimeMillis());
+            notifyResponse(serializedResponse, System.currentTimeMillis());
         }
+    }
+
+    /**
+     * Serializes payload conversion performed by Hypermedea 0.4.2. That version
+     * caches one ServiceLoader instance for all representation handlers, while
+     * HTTP response callbacks may run concurrently.
+     */
+    static Response withSerializedPayloadAccess(Response response) {
+        if (response instanceof SerializedPayloadResponse) {
+            return response;
+        }
+        return new SerializedPayloadResponse(response);
     }
 
     @Override
@@ -101,6 +116,27 @@ public class CcrsHttpOperation extends HttpOperation {
             sink.onError(this, timestamp);
         } catch (RuntimeException e) {
             logger.log(Level.WARNING, "CCRS interaction logging failed during HTTP error", e);
+        }
+    }
+
+    private static final class SerializedPayloadResponse extends BaseResponse {
+        private final Response delegate;
+
+        private SerializedPayloadResponse(Response delegate) {
+            super(delegate.getOperation());
+            this.delegate = delegate;
+        }
+
+        @Override
+        public ResponseStatus getStatus() {
+            return delegate.getStatus();
+        }
+
+        @Override
+        public Collection<Literal> getPayload() {
+            synchronized (representationHandlerMonitor) {
+                return delegate.getPayload();
+            }
         }
     }
 }
