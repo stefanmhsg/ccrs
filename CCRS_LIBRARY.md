@@ -76,6 +76,33 @@ boundary. The `.jcm` files, AgentSpeak programs, environment integration, logs,
 and experiments remain application-owned even while the source trees are still
 co-located.
 
+## Published Dependency And Documentation Contract
+
+The Maven metadata must expose every third-party type used by a public Java
+signature at compile scope while leaving provider implementation details at
+runtime scope. The current scope contract is:
+
+| Module | Compile/API dependencies | Runtime implementation dependencies |
+| --- | --- | --- |
+| `ccrs-core` | `jena-core`, `jena-arq` | None |
+| `ccrs-jacamo` | `ccrs-core`, `org.jacamo:jacamo` | None |
+| `ccrs-hypermedea` | `ccrs-core`, `ccrs-jacamo`, `org.hypermedea:hypermedea` | None |
+| `ccrs-langchain4j` | `ccrs-core`, `langchain4j-core` | `langchain4j-open-ai`, `dotenv-java` |
+| `ccrs-a2a` | `ccrs-core` | `dotenv-java` and the A2A SDK implementation artifacts |
+
+`langchain4j-core` is deliberately a direct API dependency because it owns the
+public `ChatModel` type accepted and returned by `Langchain4jLlmClient`. The
+broader `langchain4j` artifact does not provide that type transitively on a
+published consumer's compile classpath.
+
+Every module Javadoc task runs doclint for all categories except missing
+comments and treats every reported warning as an error. Missing-comment debt is
+the temporary baseline; malformed tags, broken references, invalid markup, and
+new non-missing warnings fail publication. The standalone
+[CCRS library consumer](examples/ccrs-library-consumer/README.md) verifies the
+published scopes and service descriptors rather than relying on Gradle project
+dependencies.
+
 ## Current Important Decisions
 
 ### JaCaMo Is Not Just Jason

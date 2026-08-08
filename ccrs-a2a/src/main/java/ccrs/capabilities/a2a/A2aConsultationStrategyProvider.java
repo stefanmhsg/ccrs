@@ -2,6 +2,8 @@ package ccrs.capabilities.a2a;
 
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.Objects;
+import java.util.function.Supplier;
 
 import ccrs.core.contingency.CcrsStrategyProvider;
 import ccrs.core.contingency.CcrsStrategyProviderContext;
@@ -15,6 +17,23 @@ public class A2aConsultationStrategyProvider implements CcrsStrategyProvider {
 
     private static final Logger logger =
         Logger.getLogger(A2aConsultationStrategyProvider.class.getName());
+
+    private final Supplier<ConsultationStrategy.ConsultationChannel> channelSupplier;
+
+    /**
+     * Creates the service-loaded provider using environment-backed configuration.
+     */
+    public A2aConsultationStrategyProvider() {
+        this(() -> {
+            A2aDotenvConfigFallback.enableIfAvailable();
+            return new A2aConsultationChannel(A2aConfig.fromEnvironment().build());
+        });
+    }
+
+    A2aConsultationStrategyProvider(
+            Supplier<ConsultationStrategy.ConsultationChannel> channelSupplier) {
+        this.channelSupplier = Objects.requireNonNull(channelSupplier, "channelSupplier");
+    }
 
     @Override
     public void registerStrategies(StrategyRegistry registry) {
@@ -31,9 +50,7 @@ public class A2aConsultationStrategyProvider implements CcrsStrategyProvider {
         }
 
         try {
-            A2aDotenvConfigFallback.enableIfAvailable();
-            ConsultationStrategy.ConsultationChannel channel =
-                new A2aConsultationChannel(A2aConfig.fromEnvironment().build());
+            ConsultationStrategy.ConsultationChannel channel = channelSupplier.get();
 
             if (!channel.isAvailable()) {
                 logger.info("[A2AProvider] A2A consultation channel not available");

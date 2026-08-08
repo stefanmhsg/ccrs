@@ -10,4 +10,11 @@ dependencies {
     implementation 'io.github.a2asdk:a2a-java-sdk-reference-rest:0.3.3.Final'
     implementation 'io.github.a2asdk:a2a-java-sdk-client:0.3.3.Final'
     implementation 'io.github.a2asdk:a2a-java-sdk-client-transport-rest:0.3.3.Final'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
+}
+
+test {
+    useJUnitPlatform()
 }

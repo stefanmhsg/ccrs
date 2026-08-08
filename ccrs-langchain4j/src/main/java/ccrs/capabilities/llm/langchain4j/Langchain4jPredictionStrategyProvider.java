@@ -2,6 +2,8 @@ package ccrs.capabilities.llm.langchain4j;
 
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.Objects;
+import java.util.function.Supplier;
 
 import ccrs.capabilities.DotenvConfigFallback;
 import ccrs.core.contingency.CcrsStrategyProvider;
@@ -17,6 +19,19 @@ public class Langchain4jPredictionStrategyProvider implements CcrsStrategyProvid
 
     private static final Logger logger =
         Logger.getLogger(Langchain4jPredictionStrategyProvider.class.getName());
+
+    private final Supplier<LlmClient> clientSupplier;
+
+    /**
+     * Creates the service-loaded provider using environment-backed configuration.
+     */
+    public Langchain4jPredictionStrategyProvider() {
+        this(Langchain4jLlmClient::fromEnvironment);
+    }
+
+    Langchain4jPredictionStrategyProvider(Supplier<LlmClient> clientSupplier) {
+        this.clientSupplier = Objects.requireNonNull(clientSupplier, "clientSupplier");
+    }
 
     @Override
     public void registerStrategies(StrategyRegistry registry) {
@@ -34,7 +49,7 @@ public class Langchain4jPredictionStrategyProvider implements CcrsStrategyProvid
 
         try {
             DotenvConfigFallback.enableIfAvailable();
-            LlmClient llmClient = Langchain4jLlmClient.fromEnvironment();
+            LlmClient llmClient = clientSupplier.get();
             if (!llmClient.isAvailable()) {
                 logger.info("[Langchain4jProvider] LLM client not available");
                 return;

@@ -58,6 +58,13 @@ configure(subprojects.findAll { it.name.startsWith('ccrs-') }) {
         withJavadocJar()
     }
 
+    tasks.withType(Javadoc).configureEach {
+        // Validate public documentation while accepting the current missing-comment debt.
+        // WP2 treats every other Javadoc warning as a build failure.
+        options.addStringOption('Xdoclint:all,-missing', '-quiet')
+        options.addBooleanOption('Werror', true)
+    }
+
     publishing {
         publications {
             mavenJava(MavenPublication) {

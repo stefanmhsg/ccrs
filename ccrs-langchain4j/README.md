@@ -19,6 +19,13 @@ contracts, response parsing, and LLM strategy behavior belong to `ccrs-core`:
 Keeping these pieces in core means the same strategy prompt and parser can be
 used with any `LlmClient` implementation, not only LangChain4j.
 
+The published module exposes `dev.langchain4j:langchain4j-core` as an API
+dependency because
+[`Langchain4jLlmClient.java`](src/main/java/ccrs/capabilities/llm/langchain4j/Langchain4jLlmClient.java)
+accepts and returns `ChatModel`. The OpenAI adapter and dotenv bridge remain
+runtime implementation dependencies. A consumer that calls `fromModel(...)`
+therefore does not need to redeclare LangChain4j.
+
 ## Architecture Overview
 
 ```text

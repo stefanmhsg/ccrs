@@ -1,18 +1,26 @@
 package example;
 
+import ccrs.capabilities.a2a.A2aConfig;
+import ccrs.capabilities.llm.langchain4j.Langchain4jLlmClient;
 import ccrs.core.contingency.ContingencyCcrs;
 import ccrs.core.contingency.ContingencyCcrsFactory;
 import ccrs.core.contingency.ContingencyConfiguration;
+import ccrs.core.contingency.CcrsStrategyProvider;
 import ccrs.core.contingency.dto.CcrsTrace;
 import ccrs.core.contingency.dto.Situation;
 import ccrs.core.contingency.dto.StrategyResult;
 import ccrs.core.rdf.CcrsContext;
 import ccrs.core.rdf.RdfTriple;
+import ccrs.hypermedea.CcrsHttpBinding;
+import ccrs.jacamo.CcrsJacamoRuntime;
+import dev.langchain4j.model.chat.ChatModel;
+import org.hypermedea.op.ProtocolBinding;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.ServiceLoader;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -24,6 +32,7 @@ public final class CcrsLibraryConsumer {
 
     public static void main(String[] args) {
         reduceLibraryLogging();
+        verifyPublishedModuleContracts();
 
         CcrsContext context = new InMemoryContext(List.of(
             new RdfTriple("https://example.org/agent", "https://example.org/isAt", "https://example.org/room-a"),
@@ -79,6 +88,56 @@ public final class CcrsLibraryConsumer {
                     noHelp.getExplanation()
                 );
             }
+        }
+    }
+
+    private static void verifyPublishedModuleContracts() {
+        List<String> strategyProviders = ServiceLoader.load(CcrsStrategyProvider.class).stream()
+            .map(provider -> provider.type().getName())
+            .sorted()
+            .toList();
+        require(strategyProviders.contains(
+            "ccrs.capabilities.llm.langchain4j.Langchain4jPredictionStrategyProvider"),
+            "LangChain4j strategy provider was not packaged");
+        require(strategyProviders.contains(
+            "ccrs.capabilities.a2a.A2aConsultationStrategyProvider"),
+            "A2A strategy provider was not packaged");
+
+        List<Class<? extends ProtocolBinding>> protocolBindings =
+            ServiceLoader.load(ProtocolBinding.class).stream()
+                .map(ServiceLoader.Provider::type)
+                .toList();
+        require(protocolBindings.contains(CcrsHttpBinding.class),
+            "Hypermedea protocol binding was not packaged");
+
+        ChatModel fakeModel = new ChatModel() {
+            @Override
+            public String chat(String prompt) {
+                return "fixture:" + prompt;
+            }
+        };
+        try {
+            String completion = Langchain4jLlmClient.fromModel(fakeModel).complete("hello");
+            require("fixture:hello".equals(completion),
+                "LangChain4j public ChatModel adapter returned an unexpected value");
+        } catch (Exception e) {
+            throw new IllegalStateException("LangChain4j public API fixture failed", e);
+        }
+
+        require(!A2aConfig.builder().build().isLogEvents(),
+            "A2A default configuration should not enable event logging");
+        require(CcrsJacamoRuntime.getInteractionHistoryProvider() != null,
+            "JaCaMo runtime API was not available");
+
+        System.out.println("Published module contracts verified");
+        System.out.println("- strategy providers: " + strategyProviders);
+        System.out.println("- protocol binding: " + CcrsHttpBinding.class.getName());
+        System.out.println("- LangChain4j ChatModel API: compile and invocation passed");
+    }
+
+    private static void require(boolean condition, String message) {
+        if (!condition) {
+            throw new IllegalStateException(message);
         }
     }
 

@@ -62,9 +62,9 @@ The initial GitHub Packages host is the existing `stefanmhsg/ccrs-bdi` GitHub re
 
 | NOW | NEXT | LATER |
 | --- | --- | --- |
-| WP2: Repair publication metadata and close test gaps | WP5: Make optional capability modules standalone | WP9: Harden releases and consider repository extraction |
-| WP3: Publish the current artifacts to GitHub Packages | WP6: Make Hypermedea standalone | WP10: Migrate additional consumers such as `ccrs-react` from Maven Local |
-| WP4: Make `ccrs-core` and `ccrs-jacamo` standalone | WP7: Add the composite development workspace |  |
+| WP3: Publish the current artifacts to GitHub Packages | WP5: Make optional capability modules standalone | WP9: Harden releases and consider repository extraction |
+| WP4: Make `ccrs-core` and `ccrs-jacamo` standalone | WP6: Make Hypermedea standalone | WP10: Migrate additional consumers such as `ccrs-react` from Maven Local |
+|  | WP7: Add the composite development workspace |  |
 |  | WP8: Extract the BDI application as a package consumer |  |
 
 ## Progress
@@ -78,7 +78,7 @@ The initial GitHub Packages host is the existing `stefanmhsg/ccrs-bdi` GitHub re
 - [x] (2026-08-08) Inspected the sibling `ccrs-react` repository as the reference external-consumer shape. It is repository-separated but presently resolves CCRS from Maven Local and manually enumerates Java runtime dependencies.
 - [x] (2026-08-08) Completed WP1: documented the standalone acceptance contract, selected and enforced Java 21 with `--release 21`, clarified strategy package semantics and the retained A2A simplification, and classified `examples.asl` as application-owned.
 - [x] (2026-08-08) Rebuilt the application and CCRS dependencies and reran 80 `ccrs-core` plus 8 `ccrs-jacamo` tests under Java 21; all 88 tests passed, and `javap` reported class-file major version 65.
-- [ ] Complete WP2 and prove correct published metadata and module-level tests.
+- [x] (2026-08-08) Completed WP2: corrected all published dependency scopes, replaced the Jena aggregate, added 15 integration-module tests, enforced the Javadoc warning baseline, and ran the all-module published consumer successfully.
 - [ ] Complete WP3 and publish a GitHub Packages snapshot consumed by a clean fixture.
 - [ ] Complete WP4 through WP7, leaving every CCRS module independently buildable and locally composable.
 - [ ] Complete WP8 so the BDI application no longer uses CCRS project dependencies.
@@ -89,11 +89,11 @@ The initial GitHub Packages host is the existing `stefanmhsg/ccrs-bdi` GitHub re
 - Observation: The current split is already valid at the Java import and local artifact level, but not at the source-build level.
   Evidence: All five publications succeeded and the separate core consumer ran, while module build files still declare dependencies such as `api project(':ccrs-core')` and inherit publishing from the application root.
 
-- Observation: The generated `ccrs-langchain4j` POM does not expose a dependency required by its public API.
-  Evidence: [Langchain4jLlmClient.java](ccrs-langchain4j/src/main/java/ccrs/capabilities/llm/langchain4j/Langchain4jLlmClient.java) returns and accepts `dev.langchain4j.model.chat.ChatModel`, while [ccrs-langchain4j/build.gradle](ccrs-langchain4j/build.gradle) declares both LangChain4j artifacts with `implementation`, producing Maven runtime scope.
+- Observation: Before WP2, the generated `ccrs-langchain4j` POM did not expose a dependency required by its public API.
+  Evidence: [Langchain4jLlmClient.java](ccrs-langchain4j/src/main/java/ccrs/capabilities/llm/langchain4j/Langchain4jLlmClient.java) returns and accepts `dev.langchain4j.model.chat.ChatModel`; WP2 corrected the owning `langchain4j-core` artifact to compile scope and proved it with the published consumer.
 
-- Observation: Three integration modules have no module-local automated tests.
-  Evidence: No Java test sources exist under `ccrs-hypermedea/src/test`, `ccrs-langchain4j/src/test`, or `ccrs-a2a/src/test`.
+- Observation: At the start of WP2, three integration modules had no module-local automated tests.
+  Evidence: WP2 added 4 Hypermedea, 4 LangChain4j, and 7 A2A tests under their respective `src/test` trees; all 15 pass without live external services.
 
 - Observation: `ccrs-react` is a useful ownership example but not yet a remote-package consumer example.
   Evidence: `../ccrs-react/react_agent/ccrs/java_runtime.py` locates module jars in Maven Local or Gradle caches and maintains explicit lists of Jena, LangChain4j, and A2A runtime dependencies.
@@ -103,6 +103,15 @@ The initial GitHub Packages host is the existing `stefanmhsg/ccrs-bdi` GitHub re
 
 - Observation: The repository already ran on a Java 21 launcher, but its build did not declare a toolchain or bytecode release.
   Evidence: Before WP1, `gradlew --version` reported Gradle 9.2.0 and launcher JVM 21 with “no JDK specified”; after adding the Java toolchain and `options.release`, the clean validation build passed and `ContingencyCcrs.class` reported major version 65.
+
+- Observation: The public `ChatModel` type is owned by `langchain4j-core`, and publishing the higher-level `langchain4j` artifact at compile scope still left a clean consumer unable to compile.
+  Evidence: The first expanded consumer failed with `package dev.langchain4j.model.chat does not exist`; changing the direct API dependency to `dev.langchain4j:langchain4j-core:1.10.0`, republishing, and refreshing the fixture made the same source compile and run.
+
+- Observation: A full JaCaMo artifact consumer needs Gradle's library repository in addition to the JaCaMo Maven repository.
+  Evidence: The expanded fixture initially failed to resolve `org.gradle:gradle-tooling-api:8.10`; adding `https://repo.gradle.org/gradle/libs-releases` to its standalone settings resolved the published `ccrs-jacamo` graph.
+
+- Observation: Maven repository order can hide corrected snapshot metadata or let a broad specialized repository answer for unrelated dependencies.
+  Evidence: When Maven Local preceded the repository-local Maven directory, the consumer selected an older `ccrs-langchain4j` snapshot despite `--refresh-dependencies`. Removing Maven Local made `build/local-maven-repo` authoritative, and placing Maven Central before the JaCaMo/Hypermedea repositories removed a malformed third-party POM warning from the refreshed run.
 
 ## Decision Log
 
@@ -132,6 +141,18 @@ The initial GitHub Packages host is the existing `stefanmhsg/ccrs-bdi` GitHub re
 
 - Decision: Use Java 21 as the supported baseline for every Java library, the BDI application, build fixture, and published consumer in this plan.
   Rationale: The repository already uses Java 21 locally, the consumer fixture already requests it, and one explicit toolchain plus `--release` value prevents independently extracted builds from producing inconsistent bytecode.
+  Date/Author: 2026-08-08 / Codex
+
+- Decision: Publish `jena-core` and `jena-arq` directly as the core API instead of the `apache-jena-libs` aggregate.
+  Rationale: `CcrsVocabulary` publicly exposes both `Model` and `Query`; these two modules own those types and cover the implementation without publishing unrelated Jena modules as the CCRS API surface.
+  Date/Author: 2026-08-08 / Codex
+
+- Decision: Publish `langchain4j-core` directly as the LangChain4j module API and keep `langchain4j-open-ai` plus dotenv at runtime scope.
+  Rationale: `ChatModel` is public CCRS API and must compile transitively, while the OpenAI client and configuration bridge are provider implementation details.
+  Date/Author: 2026-08-08 / Codex
+
+- Decision: Treat missing Javadoc comments as the temporary documentation baseline and fail every other Javadoc warning.
+  Rationale: Existing missing-comment debt is broad, but `-Xdoclint:all,-missing` plus `-Werror` immediately prevents malformed documentation and new non-missing warnings from entering published Javadocs.
   Date/Author: 2026-08-08 / Codex
 
 ## Context and Orientation
@@ -191,24 +212,24 @@ Outcome and notes: Completed on 2026-08-08. [CCRS_LIBRARY.md](CCRS_LIBRARY.md) n
 
 ### WP2: Repair publication metadata and close library test gaps
 
-Status: Now
+Status: Done
 
 Purpose: Make the currently published artifacts truthful and sufficiently tested before changing their physical builds. Clean consumers should receive everything required to compile against public APIs and run provider discovery.
 
-Local context: [ccrs-langchain4j/build.gradle](ccrs-langchain4j/build.gradle) declares LangChain4j as implementation dependencies, while [Langchain4jLlmClient.java](ccrs-langchain4j/src/main/java/ccrs/capabilities/llm/langchain4j/Langchain4jLlmClient.java) exposes `ChatModel`. The optional providers are registered through files under `META-INF/services`. The existing [standalone consumer build.gradle](examples/ccrs-library-consumer/build.gradle) tests only core. All compilation and consumer fixtures in this package target Java 21 with `--release 21` where Java sources are compiled.
+Local context: [ccrs-langchain4j/build.gradle](ccrs-langchain4j/build.gradle) now publishes the `langchain4j-core` artifact containing the public `ChatModel` type as API. The optional providers remain registered through files under `META-INF/services`. The [standalone consumer build.gradle](examples/ccrs-library-consumer/build.gradle) now compiles against all five published coordinates. All compilation and consumer fixtures in this package target Java 21 with `--release 21` where Java sources are compiled.
 
-Discussion: Prefer the smallest truthful dependency surface. Declare the LangChain4j API containing `ChatModel` as `api`; keep OpenAI implementation and dotenv runtime details as `implementation` unless public signatures require otherwise. A2A SDK types are currently implementation details because the public channel API exposes core consultation types. Characterization tests should lock down the accepted A2A simplification without extracting it.
+Discussion: Prefer the smallest truthful dependency surface. The exact LangChain4j artifact containing `ChatModel` is `langchain4j-core`, so it is `api`; OpenAI implementation and dotenv remain `implementation`. A2A SDK types are implementation details because the public channel API exposes core consultation types. Characterization tests lock down the accepted A2A simplification without extracting it.
 
 Todos:
 
-- [ ] Change the LangChain4j dependency that supplies public `ChatModel` types from `implementation` to `api`; keep provider-specific implementation dependencies internal where possible.
-- [ ] Inspect public signatures in all five jars and align every external dependency with `api`, `implementation`, or `runtimeOnly` accurately.
-- [ ] Replace the broad `org.apache.jena:apache-jena-libs` API dependency with the smallest explicit Jena modules that compile and run the public core API, unless evidence shows the aggregate is required.
-- [ ] Add `ccrs-hypermedea` tests for SPI packaging, binding construction, interaction logging, and runtime provider installation.
-- [ ] Add `ccrs-langchain4j` tests for public API compilation, provider discovery, missing configuration, and a fake `ChatModel` path without network calls.
-- [ ] Add `ccrs-a2a` tests for provider discovery, missing configuration, target discovery, response mapping, and the documented request/response simplification using fakes rather than live agents.
-- [ ] Extend the consumer fixtures to compile against each module's public API and verify `ServiceLoader` resources from published jars.
-- [ ] Make Javadoc generation warning-free or define and document a temporary warning baseline that fails on new warnings.
+- [x] Change the LangChain4j dependency that supplies public `ChatModel` types from `implementation` to `api`; keep provider-specific implementation dependencies internal where possible.
+- [x] Inspect public signatures in all five jars and align every external dependency with `api`, `implementation`, or `runtimeOnly` accurately.
+- [x] Replace the broad `org.apache.jena:apache-jena-libs` API dependency with the smallest explicit Jena modules that compile and run the public core API, unless evidence shows the aggregate is required.
+- [x] Add `ccrs-hypermedea` tests for SPI packaging, binding construction, interaction logging, and runtime provider installation.
+- [x] Add `ccrs-langchain4j` tests for public API compilation, provider discovery, missing configuration, and a fake `ChatModel` path without network calls.
+- [x] Add `ccrs-a2a` tests for provider discovery, missing configuration, target discovery, response mapping, and the documented request/response simplification using fakes rather than live agents.
+- [x] Extend the consumer fixtures to compile against each module's public API and verify `ServiceLoader` resources from published jars.
+- [x] Make Javadoc generation warning-free or define and document a temporary warning baseline that fails on new warnings.
 
 Concrete steps: Run focused tests while implementing:
 
@@ -222,7 +243,17 @@ Run every consumer fixture against `build/local-maven-repo`. Add a fixture that 
 
 Validation and acceptance: All module tests pass. Generated POM compile scopes match types visible in public signatures. Published jars contain the two `CcrsStrategyProvider` files and the Hypermedea `ProtocolBinding` file. Consumer fixtures compile and run using only declared CCRS coordinates and repositories.
 
-Outcome and notes: Record the final dependency-scope table and test totals.
+Outcome and notes: Completed on 2026-08-08. The final published scope table is:
+
+| Module | Compile scope | Runtime scope |
+| --- | --- | --- |
+| `ccrs-core` | `jena-core`, `jena-arq` | None |
+| `ccrs-jacamo` | `ccrs-core`, `org.jacamo:jacamo` | None |
+| `ccrs-hypermedea` | `ccrs-core`, `ccrs-jacamo`, `org.hypermedea:hypermedea` | None |
+| `ccrs-langchain4j` | `ccrs-core`, `langchain4j-core` | `langchain4j-open-ai`, `dotenv-java` |
+| `ccrs-a2a` | `ccrs-core` | `dotenv-java`, `a2a-java-sdk-reference-rest`, `a2a-java-sdk-client`, `a2a-java-sdk-client-transport-rest` |
+
+Public-signature inspection confirms that core exposes Jena `Model` and `Query`, JaCaMo exposes core and JaCaMo types, Hypermedea exposes core/JaCaMo/Hypermedea types, LangChain4j exposes core and `ChatModel`, and A2A exposes only core types. All 103 focused tests passed: core 80, JaCaMo 8, Hypermedea 4, LangChain4j 4, and A2A 7. The three new suites use fake operations, clients, and channels and perform no live service calls. All five Javadoc tasks pass with missing comments excluded and every other warning treated as an error. The published consumer compiles all five coordinates with no project dependency or Maven Local repository, discovers both `CcrsStrategyProvider` implementations and the Hypermedea `ProtocolBinding`, invokes a fake `ChatModel`, and evaluates core successfully.
 
 ### WP3: Establish GitHub Packages snapshot publication
 
@@ -509,6 +540,30 @@ WP1 repeated the build with `--rerun-tasks` after enforcing the Java baseline:
 
 The wrapper reports Gradle 9.2.0 and the configured/launcher JDK is Java 21.
 
+WP2 rebuilt the application and ran every focused module suite:
+
+    .\gradlew.bat classes :ccrs-core:test :ccrs-jacamo:test :ccrs-hypermedea:test :ccrs-langchain4j:test :ccrs-a2a:test --rerun-tasks
+
+    BUILD SUCCESSFUL
+    ccrs-core tests: 80 passed
+    ccrs-jacamo tests: 8 passed
+    ccrs-hypermedea tests: 4 passed
+    ccrs-langchain4j tests: 4 passed
+    ccrs-a2a tests: 7 passed
+    total: 103 passed
+
+All five Javadoc tasks passed under `-Xdoclint:all,-missing` and `-Werror`.
+All five Maven publications, including main, sources, Javadocs, POM, and Gradle
+module metadata, were written to `build/local-maven-repo`. The expanded
+standalone consumer then reported:
+
+    Published module contracts verified
+    - strategy providers: [ccrs.capabilities.a2a.A2aConsultationStrategyProvider, ccrs.capabilities.llm.langchain4j.Langchain4jPredictionStrategyProvider]
+    - protocol binding: ccrs.hypermedea.CcrsHttpBinding
+    - LangChain4j ChatModel API: compile and invocation passed
+    CCRS suggestions
+    - retry suggests retry target=https://example.org/api/orders confidence=0.80
+
 The repository-local publications for all five modules also succeeded. Running the separate core consumer produced:
 
     CCRS suggestions
@@ -562,3 +617,5 @@ Every standalone module must publish a main jar, sources jar, Javadocs jar, POM,
 Revision note (2026-08-08): Created this plan from the repository readiness assessment. It turns the identified build, metadata, testing, distribution, and consumer gaps into work packages; selects GitHub Packages; records that `strategies.internal` is conceptual rather than access control; keeps the current A2A behavior as a documented simplification; classifies `examples.asl` as application-owned; and makes BDI separation into a coordinate-only consumer an explicit acceptance condition.
 
 Revision note (2026-08-08, WP1 completion): Completed the standalone contract and baseline package. The plan now records Java 21 across every later work package, moves WP1 out of the Now matrix, checks every WP1 todo, adds build/test/bytecode evidence, and aligns its progress, discoveries, decisions, outcome, and artifacts with the implementation and documentation changes.
+
+Revision note (2026-08-08, WP2 completion): Corrected the published API/runtime scopes, replaced the Jena aggregate with explicit modules, added the missing Hypermedea/LangChain4j/A2A tests and fake seams, enforced the Javadoc warning baseline, expanded the coordinate-only consumer and repository requirements, recorded 103 passing tests and service-loader evidence, and moved WP2 out of the Now matrix.

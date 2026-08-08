@@ -116,7 +116,7 @@ public class A2aConsultationChannel implements ConsultationStrategy.Consultation
         return "a2a";
     }
 
-    private List<Map<String, Object>> resolveCandidateTargets(Map<String, Object> context) {
+    List<Map<String, Object>> resolveCandidateTargets(Map<String, Object> context) {
         List<Map<String, Object>> targets = new ArrayList<>();
         List<String> seenKeys = new ArrayList<>();
 
@@ -355,6 +355,10 @@ public class A2aConsultationChannel implements ConsultationStrategy.Consultation
         }
         logger.info("[A2A] Dereference response body size for " + agentUri + ": " + body.length() + " chars");
 
+        return parseAgentCardUri(agentUri, body);
+    }
+
+    Optional<String> parseAgentCardUri(String agentUri, String body) {
         Model model = ModelFactory.createDefaultModel();
         try (java.io.StringReader reader = new java.io.StringReader(body)) {
             model.read(reader, agentUri, "TURTLE");
@@ -400,7 +404,7 @@ public class A2aConsultationChannel implements ConsultationStrategy.Consultation
         throw new IllegalStateException("A2A AgentCard contains no usable skill identifiers");
     }
 
-    private Message buildRequest(String skillId, String agentCardUri) {
+    Message buildRequest(String skillId, String agentCardUri) {
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("requestedSkill", skillId);
         metadata.put("agentCardUri", agentCardUri);
@@ -541,7 +545,7 @@ public class A2aConsultationChannel implements ConsultationStrategy.Consultation
         return normalized.isBlank() ? null : normalized;
     }
 
-    private Double parseConfidenceValue(Object rawConfidence) {
+    Double parseConfidenceValue(Object rawConfidence) {
         if (rawConfidence == null) {
             return null;
         }
@@ -580,7 +584,7 @@ public class A2aConsultationChannel implements ConsultationStrategy.Consultation
         return extractTextFromMessages(task.getHistory());
     }
 
-    private String extractText(Message message) {
+    String extractText(Message message) {
         if (message == null || message.getParts() == null) {
             return null;
         }

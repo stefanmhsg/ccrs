@@ -96,20 +96,26 @@ clean consumer smoke tests.
 
 ## Standalone Consumer Example
 
-[examples/ccrs-library-consumer](examples/ccrs-library-consumer) is a tiny
-separate Gradle project that demonstrates how another repository can import
-the published CCRS libraries from local Maven instead of using Gradle project
-dependencies.
+[examples/ccrs-library-consumer](examples/ccrs-library-consumer) is a separate
+Gradle project that demonstrates how another repository can import all five
+published CCRS libraries from Maven coordinates instead of using Gradle project
+dependencies. It also verifies the public LangChain4j API and the optional
+service descriptors.
 
 Run it after publishing the libraries:
 
 ```powershell
-./gradlew publishToMavenLocal
+./gradlew :ccrs-core:publishMavenJavaPublicationToCcrsLocalRepository `
+  :ccrs-jacamo:publishMavenJavaPublicationToCcrsLocalRepository `
+  :ccrs-hypermedea:publishMavenJavaPublicationToCcrsLocalRepository `
+  :ccrs-langchain4j:publishMavenJavaPublicationToCcrsLocalRepository `
+  :ccrs-a2a:publishMavenJavaPublicationToCcrsLocalRepository
 ./gradlew -p examples/ccrs-library-consumer run
 ```
 
-The example creates a minimal in-memory CCRS context, evaluates a retryable
-failure situation, and prints the resulting strategy suggestion.
+The example first validates the published dependency scopes and service files,
+then creates a minimal in-memory CCRS context, evaluates a retryable failure
+situation, and prints the resulting strategy suggestion.
 
 ## Run The Local JaCaMo App
 

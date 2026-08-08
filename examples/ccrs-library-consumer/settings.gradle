@@ -8,15 +8,15 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
-        mavenLocal()
         maven {
             name = 'ccrsLocal'
             url = uri('../../build/local-maven-repo')
         }
+        mavenCentral()
         maven { url = uri('https://raw.githubusercontent.com/jacamo-lang/mvn-repo/master') }
+        maven { url = uri('https://repo.gradle.org/gradle/libs-releases') }
         maven { url = uri('https://hypermedea.github.io/maven') }
         maven { url = uri('https://jitpack.io') }
-        mavenCentral()
     }
 }
 
