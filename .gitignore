@@ -1,8 +1,10 @@
 # Ignore Gradle project-specific cache directory
 .gradle
 
-# Ignore Copilot instructions
-.github
+# Ignore local GitHub/Copilot material, but keep Actions workflows versioned
+.github/*
+!.github/workflows/
+!.github/workflows/**
 
 # Ignore Gradle build output directory
 build
@@ -40,4 +42,3 @@ bin/
 
 # Environment variables (contains API keys)
 .env
-

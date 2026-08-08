@@ -15,14 +15,77 @@ tasks.withType(JavaCompile).configureEach {
     options.release = 21
 }
 
+def ccrsVersion = '0.1.0-SNAPSHOT'
+def ccrsModules = [
+    'ccrs-core',
+    'ccrs-jacamo',
+    'ccrs-hypermedea',
+    'ccrs-langchain4j',
+    'ccrs-a2a'
+]
+def ccrsCoordinates = ccrsModules.collect {
+    "io.github.stefanmhsg.ccrs:${it}:${ccrsVersion}"
+}
+
+configurations {
+    ccrsSources {
+        canBeConsumed = false
+        transitive = false
+    }
+    ccrsJavadocs {
+        canBeConsumed = false
+        transitive = false
+    }
+    ccrsPoms {
+        canBeConsumed = false
+        transitive = false
+    }
+    ccrsGradleMetadata {
+        canBeConsumed = false
+        transitive = false
+    }
+}
+
 dependencies {
-    implementation 'io.github.stefanmhsg.ccrs:ccrs-core:0.1.0-SNAPSHOT'
-    implementation 'io.github.stefanmhsg.ccrs:ccrs-jacamo:0.1.0-SNAPSHOT'
-    implementation 'io.github.stefanmhsg.ccrs:ccrs-hypermedea:0.1.0-SNAPSHOT'
-    implementation 'io.github.stefanmhsg.ccrs:ccrs-langchain4j:0.1.0-SNAPSHOT'
-    implementation 'io.github.stefanmhsg.ccrs:ccrs-a2a:0.1.0-SNAPSHOT'
+    ccrsCoordinates.each { coordinate ->
+        implementation coordinate
+        ccrsSources "${coordinate}:sources"
+        ccrsJavadocs "${coordinate}:javadoc"
+        ccrsPoms "${coordinate}@pom"
+        ccrsGradleMetadata "${coordinate}@module"
+    }
 }
 
 application {
     mainClass = 'example.CcrsLibraryConsumer'
+}
+
+tasks.register('verifyPublishedArtifacts') {
+    group = 'verification'
+    description = 'Resolves the sources, Javadocs, POM, and Gradle metadata for every CCRS module.'
+
+    def artifactsByKind = [
+        sources: configurations.ccrsSources,
+        javadocs: configurations.ccrsJavadocs,
+        poms: configurations.ccrsPoms,
+        'Gradle module metadata': configurations.ccrsGradleMetadata
+    ]
+    inputs.files(artifactsByKind.values())
+
+    doLast {
+        artifactsByKind.each { kind, artifactConfiguration ->
+            def resolvedFiles = artifactConfiguration.files
+            if (resolvedFiles.size() != ccrsModules.size()) {
+                throw new GradleException(
+                    "Expected ${ccrsModules.size()} CCRS ${kind} artifacts, "
+                        + "resolved ${resolvedFiles.size()}"
+                )
+            }
+            println "- ${kind}: ${resolvedFiles.size()} resolved"
+        }
+    }
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('verifyPublishedArtifacts')
 }

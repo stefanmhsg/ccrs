@@ -79,7 +79,11 @@ The initial GitHub Packages host is the existing `stefanmhsg/ccrs-bdi` GitHub re
 - [x] (2026-08-08) Completed WP1: documented the standalone acceptance contract, selected and enforced Java 21 with `--release 21`, clarified strategy package semantics and the retained A2A simplification, and classified `examples.asl` as application-owned.
 - [x] (2026-08-08) Rebuilt the application and CCRS dependencies and reran 80 `ccrs-core` plus 8 `ccrs-jacamo` tests under Java 21; all 88 tests passed, and `javap` reported class-file major version 65.
 - [x] (2026-08-08) Completed WP2: corrected all published dependency scopes, replaced the Jena aggregate, added 15 integration-module tests, enforced the Javadoc warning baseline, and ran the all-module published consumer successfully.
-- [ ] Complete WP3 and publish a GitHub Packages snapshot consumed by a clean fixture.
+- [x] (2026-08-08) Configured GitHub Packages publication, published all five
+  `0.1.0-SNAPSHOT` modules, confirmed them through GitHub's package API, and ran
+  the artifact-only consumer successfully with a fresh Gradle user home.
+- [ ] Commit and push the WP3 workflow, dispatch `Publish CCRS snapshots`, and
+  record the first successful workflow URL before changing WP3 to Done.
 - [ ] Complete WP4 through WP7, leaving every CCRS module independently buildable and locally composable.
 - [ ] Complete WP8 so the BDI application no longer uses CCRS project dependencies.
 - [ ] Complete WP9 release gates before publishing the first non-snapshot version.
@@ -112,6 +116,28 @@ The initial GitHub Packages host is the existing `stefanmhsg/ccrs-bdi` GitHub re
 
 - Observation: Maven repository order can hide corrected snapshot metadata or let a broad specialized repository answer for unrelated dependencies.
   Evidence: When Maven Local preceded the repository-local Maven directory, the consumer selected an older `ccrs-langchain4j` snapshot despite `--refresh-dependencies`. Removing Maven Local made `build/local-maven-repo` authoritative, and placing Maven Central before the JaCaMo/Hypermedea repositories removed a malformed third-party POM warning from the refreshed run.
+
+- Observation: The repository-wide `.gitignore` originally excluded the whole
+  `.github` directory, which also excluded deployable Actions workflows.
+  Evidence: `git check-ignore -v .github/workflows/publish-ccrs-snapshots.yml`
+  resolved to the old `.github` rule. WP3 narrowed the rule and explicitly
+  re-included `.github/workflows/**`.
+
+- Observation: A fresh Gradle user home intentionally does not inherit
+  `%USERPROFILE%\.gradle\gradle.properties`.
+  Evidence: The first remote fixture run downloaded a fresh Gradle 9.2.0
+  distribution and stopped with the fixture's missing-credentials message.
+  Supplying the same credentials as process-only `GITHUB_ACTOR` and
+  `GITHUB_TOKEN` variables made the isolated run resolve and execute all remote
+  artifacts. The GitHub workflow already uses this environment-variable path.
+
+- Observation: GitHub Actions does not expose the `runner` expression context
+  while it evaluates job-level `env`.
+  Evidence: Workflow validation rejected
+  `jobs.remote-consumer.env.GRADLE_USER_HOME` with `Unrecognized named-value:
+  'runner'`. Moving the same expression to the `Resolve and run remote
+  publications` step's `env` makes it evaluate after a runner has been
+  assigned while preserving the fresh Gradle user home.
 
 ## Decision Log
 
@@ -153,6 +179,20 @@ The initial GitHub Packages host is the existing `stefanmhsg/ccrs-bdi` GitHub re
 
 - Decision: Treat missing Javadoc comments as the temporary documentation baseline and fail every other Javadoc warning.
   Rationale: Existing missing-comment debt is broad, but `-Xdoclint:all,-missing` plus `-Werror` immediately prevents malformed documentation and new non-missing warnings from entering published Javadocs.
+  Date/Author: 2026-08-08 / Codex
+
+- Decision: Let the consumer select exactly one CCRS repository with
+  `-PccrsRepository=local|github` and make that repository exclusive to the
+  `io.github.stefanmhsg.ccrs` group.
+  Rationale: A clean remote check must not fall back to the repository-local
+  directory, while specialized third-party repositories must not answer for
+  CCRS coordinates.
+  Date/Author: 2026-08-08 / Codex
+
+- Decision: Publish snapshots only from a manually dispatched workflow and
+  enforce the `-SNAPSHOT` suffix in Gradle before every GitHub Packages upload.
+  Rationale: Pull requests and ordinary branch builds must remain read-only;
+  stable versions require the separate tag-driven release gates in WP9.
   Date/Author: 2026-08-08 / Codex
 
 ## Context and Orientation
@@ -267,12 +307,14 @@ Discussion: Keep local publication tasks alongside GitHub publication. Publishin
 
 Todos:
 
-- [ ] Add a `GitHubPackages` Maven publication repository using `https://maven.pkg.github.com/stefanmhsg/ccrs-bdi`.
-- [ ] Resolve credentials from `gpr.user`/`gpr.key` locally and `GITHUB_ACTOR`/`GITHUB_TOKEN` in CI without logging secrets.
-- [ ] Add a GitHub Actions workflow with `contents: read` and `packages: write` that builds, tests, and publishes snapshots only when explicitly triggered.
-- [ ] Add consumer repository documentation for `read:packages` authentication.
-- [ ] Add a clean remote consumer smoke job using a fresh `GRADLE_USER_HOME` and no `mavenLocal()` repository.
-- [ ] Verify sources jars, Javadocs jars, Gradle module metadata, POMs, and service files after remote resolution.
+- [x] Add a `GitHubPackages` Maven publication repository using `https://maven.pkg.github.com/stefanmhsg/ccrs-bdi`.
+- [x] Resolve credentials from `gpr.user`/`gpr.key` locally and `GITHUB_ACTOR`/`GITHUB_TOKEN` in CI without logging secrets.
+- [x] Add a GitHub Actions workflow with `contents: read` and `packages: write` that builds, tests, and publishes snapshots only when explicitly triggered.
+- [x] Add consumer repository documentation for `read:packages` authentication.
+- [x] Add a clean remote consumer smoke job using a fresh `GRADLE_USER_HOME` and no `mavenLocal()` repository.
+- [x] Verify sources jars, Javadocs jars, Gradle module metadata, POMs, and service files after remote resolution.
+- [ ] Commit and push the workflow, dispatch it manually, and record its first
+  successful run URL.
 
 Concrete steps: Configure publication so the task name is stable, for example `publishMavenJavaPublicationToGitHubPackagesRepository`. In CI, run:
 
@@ -286,7 +328,17 @@ Do not publish from a pull request originating from untrusted code, and do not e
 
 Validation and acceptance: GitHub shows five `0.1.0-SNAPSHOT` Maven packages associated with `stefanmhsg/ccrs-bdi`. A clean authenticated fixture downloads and runs core, compiles against the LangChain4j `ChatModel` API, discovers optional providers when their jars are selected, and does not read from Maven Local.
 
-Outcome and notes: Record the workflow name, first successful run URL, published coordinates, and consumer transcript without credentials.
+Outcome and notes: Implementation and direct remote validation completed on
+2026-08-08. The workflow is named `Publish CCRS snapshots` and lives at
+[publish-ccrs-snapshots.yml](.github/workflows/publish-ccrs-snapshots.yml). The
+local authorized publication created all five package records under
+`stefanmhsg/ccrs-bdi`, and GitHub's package API reports
+`0.1.0-SNAPSHOT` for every coordinate. A fresh Gradle 9.2.0 user home resolved
+five sources jars, five Javadocs jars, five POMs, and five Gradle metadata files
+from GitHub Packages; the consumer then discovered both strategy providers and
+the Hypermedea binding, invoked the public `ChatModel` path, and evaluated core.
+The workflow file is still uncommitted, so no honest workflow run URL exists
+yet. Commit/push/dispatch is the only remaining WP3 acceptance item.
 
 ### WP4: Make `ccrs-core` and `ccrs-jacamo` independent builds
 
@@ -569,6 +621,32 @@ The repository-local publications for all five modules also succeeded. Running t
     CCRS suggestions
     - retry suggests retry target=https://example.org/api/orders confidence=0.80
 
+WP3 published the aligned snapshots with:
+
+    .\gradlew.bat publishCcrsSnapshotsToGitHubPackages
+
+GitHub's authenticated package API confirmed the five repository-associated
+package records and the `0.1.0-SNAPSHOT` version:
+
+    io.github.stefanmhsg.ccrs.ccrs-core
+    io.github.stefanmhsg.ccrs.ccrs-jacamo
+    io.github.stefanmhsg.ccrs.ccrs-hypermedea
+    io.github.stefanmhsg.ccrs.ccrs-langchain4j
+    io.github.stefanmhsg.ccrs.ccrs-a2a
+
+The clean remote fixture used a newly downloaded Gradle 9.2.0 distribution and
+an otherwise empty Gradle user home. It reported:
+
+    - sources: 5 resolved
+    - javadocs: 5 resolved
+    - poms: 5 resolved
+    - Gradle module metadata: 5 resolved
+    Published module contracts verified
+    - strategy providers: [ccrs.capabilities.a2a.A2aConsultationStrategyProvider, ccrs.capabilities.llm.langchain4j.Langchain4jPredictionStrategyProvider]
+    - protocol binding: ccrs.hypermedea.CcrsHttpBinding
+    - LangChain4j ChatModel API: compile and invocation passed
+    BUILD SUCCESSFUL
+
 Current coordinates:
 
     io.github.stefanmhsg.ccrs:ccrs-core:0.1.0-SNAPSHOT
@@ -619,3 +697,16 @@ Revision note (2026-08-08): Created this plan from the repository readiness asse
 Revision note (2026-08-08, WP1 completion): Completed the standalone contract and baseline package. The plan now records Java 21 across every later work package, moves WP1 out of the Now matrix, checks every WP1 todo, adds build/test/bytecode evidence, and aligns its progress, discoveries, decisions, outcome, and artifacts with the implementation and documentation changes.
 
 Revision note (2026-08-08, WP2 completion): Corrected the published API/runtime scopes, replaced the Jena aggregate with explicit modules, added the missing Hypermedea/LangChain4j/A2A tests and fake seams, enforced the Javadoc warning baseline, expanded the coordinate-only consumer and repository requirements, recorded 103 passing tests and service-loader evidence, and moved WP2 out of the Now matrix.
+
+Revision note (2026-08-08, WP3 implementation): Added the authenticated GitHub
+Packages repository, snapshot-only aggregate task, manually dispatched Actions
+workflow, exclusive local/remote consumer selection, and complete publication
+artifact verification. Published and remotely consumed all five snapshots and
+recorded the package evidence. WP3 remains Now only because the new workflow
+cannot be dispatched until the currently uncommitted source changes are
+committed and pushed; its first successful run URL is still required.
+
+Revision note (2026-08-08, WP3 workflow context correction): Moved the clean
+consumer's `GRADLE_USER_HOME` expression from job-level `env`, where the
+`runner` context is unavailable, to the remote-consumer execution step, where
+the assigned runner exposes `runner.temp`.

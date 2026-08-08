@@ -103,6 +103,33 @@ new non-missing warnings fail publication. The standalone
 published scopes and service descriptors rather than relying on Gradle project
 dependencies.
 
+## GitHub Packages Snapshot Distribution
+
+The initial remote Maven registry is
+`https://maven.pkg.github.com/stefanmhsg/ccrs-bdi`. The root
+[build.gradle](build.gradle) retains Maven Local and the repository-local Maven
+directory, adds a `GitHubPackages` publication repository, and provides the
+`publishCcrsSnapshotsToGitHubPackages` aggregate task for all five aligned
+modules. That aggregate rejects versions without the `-SNAPSHOT` suffix.
+
+Local publishing and consumption read `gpr.user` and `gpr.key` from the
+user-level Gradle properties file. GitHub Actions falls back to `GITHUB_ACTOR`
+and the workflow-provided `GITHUB_TOKEN`. Credentials must never be committed
+or passed as literal command-line arguments. A local reader needs a classic
+personal access token with `read:packages`; local publication also needs
+`write:packages`.
+
+The explicitly triggered
+[Publish CCRS snapshots workflow](.github/workflows/publish-ccrs-snapshots.yml)
+uses `contents: read` and `packages: write`. It builds, tests, generates
+Javadocs, publishes the modules, and then starts a separate consumer job with a
+fresh Gradle user home. The
+[CCRS library consumer](examples/ccrs-library-consumer/README.md) selects the
+remote repository with `-PccrsRepository=github`; its `build` resolves all five
+runtime jars, sources jars, Javadocs jars, POMs, and Gradle module metadata and
+its `run` verifies the public LangChain4j API and service providers. Normal
+pull-request and branch builds never publish.
+
 ## Current Important Decisions
 
 ### JaCaMo Is Not Just Jason

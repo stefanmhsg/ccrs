@@ -17,6 +17,12 @@ apply from: '.jcm-deps.gradle' // this file contains dependencies declared in th
 version = '0.1.0-SNAPSHOT'
 group = 'io.github.stefanmhsg.ccrs'
 
+def ccrsLibraryProjects = subprojects.findAll { it.name.startsWith('ccrs-') }
+def githubPackagesUser = providers.gradleProperty('gpr.user')
+    .orElse(providers.environmentVariable('GITHUB_ACTOR'))
+def githubPackagesToken = providers.gradleProperty('gpr.key')
+    .orElse(providers.environmentVariable('GITHUB_TOKEN'))
+
 allprojects {
     version = '0.1.0-SNAPSHOT'
     group = 'io.github.stefanmhsg.ccrs'
@@ -49,7 +55,7 @@ allprojects {
     }
 }
 
-configure(subprojects.findAll { it.name.startsWith('ccrs-') }) {
+configure(ccrsLibraryProjects) {
     apply plugin: 'java-library'
     apply plugin: 'maven-publish'
 
@@ -82,7 +88,43 @@ configure(subprojects.findAll { it.name.startsWith('ccrs-') }) {
                 name = 'ccrsLocal'
                 url = rootProject.layout.buildDirectory.dir('local-maven-repo')
             }
+            maven {
+                name = 'GitHubPackages'
+                url = uri('https://maven.pkg.github.com/stefanmhsg/ccrs-bdi')
+                credentials {
+                    username = githubPackagesUser.orNull
+                    password = githubPackagesToken.orNull
+                }
+            }
         }
+    }
+}
+
+tasks.register('verifySnapshotVersion') {
+    group = 'publishing'
+    description = 'Fails unless the aligned CCRS version is a snapshot.'
+
+    doLast {
+        if (!project.version.toString().endsWith('-SNAPSHOT')) {
+            throw new GradleException(
+                "Refusing snapshot publication for non-snapshot version ${project.version}"
+            )
+        }
+    }
+}
+
+ccrsLibraryProjects.each { libraryProject ->
+    libraryProject.tasks.named('publishMavenJavaPublicationToGitHubPackagesRepository') {
+        dependsOn rootProject.tasks.named('verifySnapshotVersion')
+    }
+}
+
+tasks.register('publishCcrsSnapshotsToGitHubPackages') {
+    group = 'publishing'
+    description = 'Publishes all five CCRS snapshot modules to GitHub Packages.'
+    dependsOn tasks.named('verifySnapshotVersion')
+    dependsOn ccrsLibraryProjects.collect {
+        "${it.path}:publishMavenJavaPublicationToGitHubPackagesRepository"
     }
 }
 

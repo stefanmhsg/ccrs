@@ -8,9 +8,46 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
-        maven {
-            name = 'ccrsLocal'
-            url = uri('../../build/local-maven-repo')
+        def ccrsRepository = providers.gradleProperty('ccrsRepository').getOrElse('local')
+        def githubPackagesUser = providers.gradleProperty('gpr.user')
+            .orElse(providers.environmentVariable('GITHUB_ACTOR'))
+        def githubPackagesToken = providers.gradleProperty('gpr.key')
+            .orElse(providers.environmentVariable('GITHUB_TOKEN'))
+
+        exclusiveContent {
+            forRepository {
+                if (ccrsRepository == 'local') {
+                    maven {
+                        name = 'ccrsLocal'
+                        url = uri('../../build/local-maven-repo')
+                    }
+                } else if (ccrsRepository == 'github') {
+                    if (!githubPackagesUser.present || !githubPackagesToken.present) {
+                        throw new GradleException(
+                            'GitHub Packages requires gpr.user/gpr.key or '
+                                + 'GITHUB_ACTOR/GITHUB_TOKEN'
+                        )
+                    }
+                    maven {
+                        name = 'GitHubPackages'
+                        url = uri('https://maven.pkg.github.com/stefanmhsg/ccrs-bdi')
+                        credentials {
+                            username = githubPackagesUser.get()
+                            password = githubPackagesToken.get()
+                        }
+                        mavenContent {
+                            snapshotsOnly()
+                        }
+                    }
+                } else {
+                    throw new GradleException(
+                        "Unsupported ccrsRepository '${ccrsRepository}'; use local or github"
+                    )
+                }
+            }
+            filter {
+                includeGroup('io.github.stefanmhsg.ccrs')
+            }
         }
         mavenCentral()
         maven { url = uri('https://raw.githubusercontent.com/jacamo-lang/mvn-repo/master') }

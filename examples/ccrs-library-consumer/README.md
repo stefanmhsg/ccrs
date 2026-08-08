@@ -3,7 +3,8 @@
 This is a small standalone Gradle project that consumes the CCRS modules as
 published Maven libraries. It is intentionally not included in the root
 [settings.gradle](../../settings.gradle), so it behaves like a separate user
-repository.
+repository. It can resolve from either the repository-local Maven directory or
+GitHub Packages without using Maven Local.
 
 ## What It Shows
 
@@ -16,8 +17,10 @@ repository.
   extra LangChain4j dependency, proving the published API scope.
 - Discovers the LangChain4j and A2A strategy providers and the Hypermedea
   protocol binding from the service descriptors in published jars.
+- Resolves the sources jar, Javadocs jar, POM, and Gradle module metadata for
+  every CCRS coordinate as part of `check` and `build`.
 
-## Run It
+## Run It From The Repository-Local Maven Directory
 
 First publish the CCRS modules to the repository-local Maven directory from
 the repository root:
@@ -40,13 +43,56 @@ The project resolves CCRS only from
 [build/local-maven-repo](../../build/local-maven-repo); it does not declare
 Maven Local, so this check cannot select an older local snapshot.
 
+## Run It From GitHub Packages
+
+GitHub Packages requires authentication for Maven/Gradle package downloads.
+Create a classic GitHub personal access token with `read:packages`, then put
+the credentials in the user-level Gradle file
+`%USERPROFILE%\.gradle\gradle.properties`:
+
+```properties
+gpr.user=YOUR_GITHUB_USERNAME
+gpr.key=YOUR_CLASSIC_GITHUB_PAT
+```
+
+Do not add those properties to this project or any other tracked file. Resolve
+only the remote CCRS snapshots, verify every published artifact kind, and run
+the example with:
+
+```powershell
+./gradlew -p examples/ccrs-library-consumer `
+  -PccrsRepository=github `
+  --refresh-dependencies `
+  clean build run
+```
+
+The
+[Publish CCRS snapshots workflow](../../.github/workflows/publish-ccrs-snapshots.yml)
+performs the same check with a fresh `GRADLE_USER_HOME` after publication. It
+uses the workflow-provided `GITHUB_TOKEN`; a separate repository secret is not
+required when publishing to and consuming from this repository's package
+registry.
+
 ## Use The Same Pattern Elsewhere
 
-In another Gradle project, add the repositories required by the CCRS modules:
+In another Gradle project, add GitHub Packages and the repositories required by
+the selected CCRS modules:
 
 ```gradle
 repositories {
-    mavenLocal()
+    maven {
+        url = uri('https://maven.pkg.github.com/stefanmhsg/ccrs-bdi')
+        credentials {
+            username = findProperty('gpr.user') ?: System.getenv('GITHUB_ACTOR')
+            password = findProperty('gpr.key') ?: System.getenv('GITHUB_TOKEN')
+        }
+        content {
+            includeGroup('io.github.stefanmhsg.ccrs')
+        }
+        mavenContent {
+            snapshotsOnly()
+        }
+    }
     mavenCentral()
     maven { url = uri('https://raw.githubusercontent.com/jacamo-lang/mvn-repo/master') }
     maven { url = uri('https://repo.gradle.org/gradle/libs-releases') }

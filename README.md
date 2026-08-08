@@ -94,6 +94,38 @@ You can also publish the libraries to a repository-local Maven directory:
 That writes artifacts under `build/local-maven-repo`, which is useful for
 clean consumer smoke tests.
 
+## GitHub Packages Snapshots
+
+The five library modules can also be published to the repository-scoped Maven
+registry at `https://maven.pkg.github.com/stefanmhsg/ccrs-bdi`. The explicitly
+triggered
+[Publish CCRS snapshots workflow](.github/workflows/publish-ccrs-snapshots.yml)
+builds and tests every module, publishes `0.1.0-SNAPSHOT`, and then resolves the
+artifacts in a clean consumer job. Pull requests and ordinary builds do not
+publish packages.
+
+GitHub Actions uses its automatically created `GITHUB_TOKEN`; no repository
+PAT secret is required for this same-repository workflow. For local publication
+or consumption, place a GitHub username and classic personal access token in
+the user-level Gradle file `%USERPROFILE%\.gradle\gradle.properties`:
+
+```properties
+gpr.user=YOUR_GITHUB_USERNAME
+gpr.key=YOUR_CLASSIC_GITHUB_PAT
+```
+
+Use `read:packages` to consume packages and add `write:packages` to publish
+them. Never put these properties in a repository file. With those local
+properties configured, publish all five aligned snapshots with:
+
+```powershell
+./gradlew publishCcrsSnapshotsToGitHubPackages
+```
+
+The aggregate task refuses non-snapshot versions. Stable, tag-driven releases
+are intentionally deferred until the release-hardening work package in
+[PLAN_CCRS_PHYSICAL_SEPARATION.md](PLAN_CCRS_PHYSICAL_SEPARATION.md).
+
 ## Standalone Consumer Example
 
 [examples/ccrs-library-consumer](examples/ccrs-library-consumer) is a separate
