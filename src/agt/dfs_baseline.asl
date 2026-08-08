@@ -158,7 +158,23 @@ MAIN LOOP
         -remaining(Location, [Next|Tail]) ; // Delete item
         +remaining(Location, Tail) ; // Add item minus next option
         .print("remaining options: ", Tail) ;
+        !try_access(Location, Next) ;
+    .
+
+// Keep DFS access recovery scoped to selected unexplored options.
++!try_access(Location, Next) :
+    true
+    <-
         !access(Next) ;
+    .
+
+// The failed option was already removed from remaining/2, so try the next one.
+-!try_access(Location, Failed) :
+    true
+    <-
+        .print("Access failed for: ", Failed) ;
+        .print("Trying the next remaining option from: ", Location) ;
+        !select_next(Location) ;
     .
 
 // DFS: Next move if current Location has no options left
