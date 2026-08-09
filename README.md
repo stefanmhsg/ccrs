@@ -19,6 +19,7 @@ through published packages, just like another research artifact consumer.
 | [ccrs-hypermedea](ccrs-hypermedea) | Optional Hypermedea HTTP and interaction-history integration. |
 | [ccrs-langchain4j](ccrs-langchain4j) | Optional LangChain4j-backed prediction capability. |
 | [ccrs-a2a](ccrs-a2a) | Optional A2A-backed consultation capability. |
+| [ccrs-langgraph](ccrs-langgraph) | Installable Python adapter that exposes Java CCRS to LangGraph agents through JPype. |
 | [ccrs-workspace](ccrs-workspace) | Development-only Gradle composite for all five standalone builds. |
 | [examples/ccrs-library-consumer](examples/ccrs-library-consumer) | Artifact-only consumer and publication contract check. |
 
@@ -34,6 +35,10 @@ Every module is a complete Java 21 Gradle build with its own wrapper, tests,
 Javadocs, sources artifact, metadata, and Maven publication. Production
 dependencies use Maven coordinates; there are no Gradle project dependencies
 between the standalone builds.
+
+`ccrs-langgraph` is a separate Python distribution boundary, not another node
+in the Java dependency graph. It resolves selected Java modules and their
+transitive dependencies from GitHub Packages at runtime.
 
 ## Build
 
@@ -88,6 +93,12 @@ publication. Never commit credentials. The manually dispatched
 repository `GITHUB_TOKEN`, builds every standalone module, verifies both local
 composite and staged-artifact paths, publishes all five snapshots, and runs the
 consumer with a fresh Gradle user home.
+
+The Python adapter is distributed as wheel and source archives on this
+repository's GitHub Releases because GitHub Packages has no PyPI registry.
+Release tags are adapter-scoped, for example `ccrs-langgraph-v0.1.0`; see the
+[adapter installation guide](ccrs-langgraph/README.md) and
+[release workflow](.github/workflows/release-ccrs-langgraph.yml).
 
 ## Architecture And Reproducibility
 

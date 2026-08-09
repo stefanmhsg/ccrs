@@ -3,7 +3,8 @@
 ## Scope
 
 - Applies to the entire `ccrs` research-artifact repository.
-- This repository owns reusable CCRS libraries and library verification only.
+- This repository owns reusable CCRS libraries, framework adapters, and their
+  verification only.
 - The JaCaMo application, `.jcm` files, AgentSpeak programs, environments,
   experiments, and application tests belong in `stefanmhsg/ccrs-bdi`.
 
@@ -25,6 +26,9 @@
 - Each of `ccrs-core`, `ccrs-jacamo`, `ccrs-hypermedea`,
   `ccrs-langchain4j`, and `ccrs-a2a` is an authoritative standalone Gradle
   build with Java 21 and `--release 21`.
+- Treat `ccrs-langgraph` as an authoritative standalone Python distribution.
+  Keep its source and reusable tests inside that directory; concrete agent
+  graph wiring and experiments belong in consuming repositories.
 - Declare CCRS dependencies by `io.github.stefanmhsg.ccrs` coordinate. Do not
   introduce Gradle project dependencies, Maven Local resolution, or filesystem
   fallback repositories.
@@ -37,6 +41,8 @@
 
 - Run a module's wrapper from its own directory.
 - Run all module builds with `cd ccrs-workspace && ./gradlew verifyAll`.
+- Validate `ccrs-langgraph` from its own directory with the supported Python
+  interpreter, `python -m unittest discover -s tests`, and `python -m build`.
 - Validate published metadata, service descriptors, sources, Javadocs, and
   consumer behavior with `examples/ccrs-library-consumer`.
 - Do not add secrets, API keys, usernames, tokens, or private endpoints to

@@ -1,0 +1,66 @@
+name: Release ccrs-langgraph
+
+on:
+  push:
+    tags:
+      - "ccrs-langgraph-v*"
+
+permissions:
+  contents: write
+  packages: read
+
+jobs:
+  build-test-release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ccrs-langgraph
+    env:
+      CCRS_VERSION: 0.1.0-SNAPSHOT
+      GITHUB_ACTOR: ${{ github.actor }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Build wheel and source distribution
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      - name: Verify the built wheel as an external consumer
+        run: |
+          python -m venv "$RUNNER_TEMP/ccrs-langgraph-consumer"
+          "$RUNNER_TEMP/ccrs-langgraph-consumer/bin/python" -m pip install dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/ccrs-langgraph-consumer/bin/python" -c "from importlib import import_module, resources; import pkgutil, ccrs_langgraph; assert resources.files('ccrs_langgraph').joinpath('_runtime_resolver', 'gradle', 'wrapper', 'gradle-wrapper.jar').is_file(); [import_module(module.name) for module in pkgutil.walk_packages(ccrs_langgraph.__path__, ccrs_langgraph.__name__ + '.')]; print(ccrs_langgraph.__version__)"
+          test "ccrs-langgraph-v$("$RUNNER_TEMP/ccrs-langgraph-consumer/bin/python" -c "import ccrs_langgraph; print(ccrs_langgraph.__version__)")" = "$GITHUB_REF_NAME"
+
+      - name: Run reusable tests against the built wheel
+        run: |
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/ccrs-langgraph-consumer/bin/python" -m unittest discover -s "$GITHUB_WORKSPACE/ccrs-langgraph/tests" -v
+
+      - name: Resolve Java CCRS from GitHub Packages and load it through JPype
+        run: |
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/ccrs-langgraph-consumer/bin/python" -c "from ccrs_langgraph import CcrsJavaRuntime; runtime = CcrsJavaRuntime.from_github_packages(); jpype = runtime.ensure_jvm(audit_event_namespace='react.ccrs.release_smoke', log=__import__('logging').getLogger('release'), log_prefix='[release]'); runtime.class_(jpype, 'ccrs.core.opportunistic.VocabularyMatcher'); print('Loaded Java CCRS through JPype')"
+
+      - name: Create or update the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes --title "$GITHUB_REF_NAME"
+          gh release upload "$GITHUB_REF_NAME" dist/* --clobber

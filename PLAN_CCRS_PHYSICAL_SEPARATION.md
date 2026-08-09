@@ -102,7 +102,7 @@ unchanged.
 
 | NOW | NEXT | LATER |
 | --- | --- | --- |
-| WP6: Extract the BDI application as a package consumer | WP8: Harden releases and consider repository extraction | WP9: Migrate additional consumers such as `ccrs-react` from Maven Local |
+| None | WP8: Harden stable Java releases | None currently identified |
 
 ## Progress
 
@@ -154,6 +154,11 @@ unchanged.
   coverage, and trusted-agent-name documentation. All 124 tests, the composite,
   and all three experiment-report compatibility gates passed.
 - [ ] Complete WP8 release gates before publishing the first non-snapshot version.
+- [x] (2026-08-09) Moved the reusable `ccrs-langgraph` Python distribution,
+  bundled Java resolver, reusable tests, and release workflow into the
+  package-owning `ccrs` repository. Removed the package source and packaging
+  metadata from `ccrs-react`, which now retains only concrete application
+  wiring and integration tests.
 
 ## Surprises & Discoveries
 
@@ -377,6 +382,14 @@ unchanged.
   afterward restores its established name without preserving a dual source
   topology. Both repositories retain the relevant common history.
   Date/Author: 2026-08-08 / User direction and Codex
+
+- Decision: Own `ccrs-langgraph` in `stefanmhsg/ccrs`, alongside the Java CCRS
+  modules, and make `ccrs-react` a released-package consumer without a duplicate
+  adapter tree.
+  Rationale: The Python code is a reusable framework adapter over CCRS, while
+  the React repository is one concrete application. One canonical source and
+  one adapter-specific release workflow prevent ownership ambiguity.
+  Date/Author: 2026-08-09 / User direction and Codex
 
 - Decision: Make `ccrs-workspace` a sixth, non-publishing Gradle build with explicit substitutions for all five library coordinates and delegate aggregate tasks to included-build lifecycle tasks.
   Rationale: Explicit mappings make source selection reviewable, while delegation leaves dependency, repository, Java, test, and publication logic exclusively in each standalone module. The existing workflow can compare this source path with isolated staged and fresh remote artifact paths.
@@ -984,29 +997,56 @@ Validation and acceptance: A release tag produces immutable versioned artifacts 
 
 Outcome and notes: Record the first stable version, package links, compatibility report, and repository-topology decision.
 
-### WP9: Migrate additional consumers from Maven Local
+### WP9: Extract `ccrs-langgraph` and migrate `ccrs-react`
 
-Status: Later
+Status: Done
 
-Purpose: Make other CCRS consumers, beginning with `ccrs-react`, consume the same remotely published metadata and remove duplicated dependency knowledge where practical.
+Purpose: Make `ccrs-react` a true external consumer while keeping the reusable
+LangGraph adapter with the CCRS research artifact.
 
-Local context: `../ccrs-react/react_agent/ccrs/java_runtime.py` currently searches Maven Local and Gradle caches and hardcodes runtime dependency coordinates. Its separation from `ccrs-bdi` is the desired repository ownership pattern, but its resolver predates remote GitHub Packages distribution. Its JPype runtime and materialized Java classpath must support the published Java 21 baseline.
+Local context: The adapter was first cut over from `react_agent.ccrs` to the
+`ccrs_langgraph` namespace inside `ccrs-react`. Its resolver already consumed
+published Java metadata. The remaining ownership gap was that reusable package
+source and its release workflow still lived in the application repository.
 
-Discussion: This work belongs primarily in each consumer repository. Do not change `ccrs-react` as part of the BDI extraction unless its own active plan is updated. Prefer resolving a generated classpath from Gradle/Maven metadata rather than maintaining a second hand-written transitive dependency list in Python.
+Discussion: Perform one physical cutover. `ccrs` owns the complete Python
+distribution under `ccrs-langgraph`; `ccrs-react` owns only graph assembly,
+settings, notebooks, and experiments. Do not leave forwarding packages or a
+second source tree. Python artifacts remain GitHub Release assets, while their
+Java dependencies remain GitHub Packages artifacts.
 
 Todos:
 
-- [ ] Add a `ccrs-react` work package to its active plan for GitHub Packages authentication and dependency resolution.
-- [ ] Replace Maven-Local-only assumptions with a remote-capable dependency materialization step.
-- [ ] Remove hardcoded dependency entries after published metadata is proven sufficient.
-- [ ] If local Java source development is required, use coordinate-preserving composite substitution; do not retain Maven Local or filesystem fallback resolution.
-- [ ] Repeat the clean consumer and provider-discovery tests in `ccrs-react`.
+- [x] Move package source, metadata, bundled resolver, reusable tests, and the
+  release workflow to `ccrs/ccrs-langgraph`.
+- [x] Keep only application-owned graph integration tests in `ccrs-react`.
+- [x] Point `ccrs-react` requirements and documentation at the scoped
+  `ccrs-langgraph-v0.1.0` release asset.
+- [x] Update both repositories' ownership guidance and active plans.
+- [x] Build and test the package independently, then test `ccrs-react` against
+  an editable install from the new canonical directory.
 
-Concrete steps: Work from the `ccrs-react` repository under its own guidance. Materialize the requested CCRS modules and their runtime dependencies into a deterministic classpath directory using Gradle or Maven metadata, then point JPype at that directory.
+Concrete steps: Move files without copying them, split reusable tests from
+application integration tests, adapt nested build/release paths, install the
+new canonical package into the application environment, and validate each
+repository from its own root.
 
-Validation and acceptance: A clean `ccrs-react` checkout authenticates to GitHub Packages, downloads the requested CCRS version and transitive dependencies, runs its JPype integration tests, and does not require a sibling `ccrs-bdi` checkout or Maven Local publication.
+Validation and acceptance: Only one `ccrs_langgraph` source tree exists;
+`ccrs-langgraph` builds wheel and source archives and passes reusable tests;
+the wheel imports without `react_agent`; and `ccrs-react` passes its
+application tests while importing the installed package. A remote
+`requirements.txt` install becomes available after the matching scoped tag is
+published.
 
-Outcome and notes: Record changes in the `ccrs-react` execution plan rather than duplicating detailed progress here.
+Outcome and notes: Completed locally on 2026-08-09. The canonical source is
+`ccrs/ccrs-langgraph`; `ccrs-react` has no adapter source, build metadata, or
+release workflow duplicate. Remote release publication remains a later
+push/tag action, not part of this filesystem cutover. Twenty-three reusable
+package tests and seven application tests passed. A clean wheel environment
+outside both repositories imported all 28 modules with `react_agent` absent,
+contained exactly the four intended Gradle resolver files, resolved
+`ccrs-core:0.1.0-SNAPSHOT` from GitHub Packages, and loaded
+`ccrs.core.opportunistic.VocabularyMatcher` through JPype.
 
 ## Validation and Acceptance
 

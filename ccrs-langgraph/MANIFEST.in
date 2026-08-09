@@ -1,0 +1,4 @@
+include README.md
+recursive-include src/ccrs_langgraph/_runtime_resolver *.gradle *.jar *.properties
+prune src/ccrs_langgraph/_runtime_resolver/.gradle
+prune src/ccrs_langgraph/_runtime_resolver/build

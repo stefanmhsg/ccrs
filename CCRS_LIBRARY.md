@@ -7,7 +7,8 @@ consistent.
 
 ## Target State
 
-This repository contains five physically standalone CCRS builds. The separate
+This repository contains five physically standalone Java builds and one
+standalone Python adapter distribution. The separate
 [ccrs-bdi application](https://github.com/stefanmhsg/ccrs-bdi) consumes their
 published Maven coordinates:
 
@@ -31,10 +32,18 @@ ccrs-a2a
   depends on ccrs-core
   provides A2A-backed consultation strategy wiring
 
+ccrs-langgraph
+  installable Python distribution with LangGraph-native state and node APIs
+  resolves selected Java CCRS modules from GitHub Packages through JPype
+
 ccrs-bdi user application
   depends on whichever library modules are needed
   remains the concrete CCRS BDI application
   contains .jcm, .asl, .env.example, logs, experiments, and app-specific docs
+
+ccrs-react user application
+  consumes the released ccrs-langgraph wheel
+  owns concrete graph wiring, CLI/notebook entry points, and experiments
 ```
 
 Dependency rule:
@@ -44,6 +53,7 @@ core <- jacamo <- hypermedea
 core <- langchain4j
 core <- a2a
 user app -> all selected modules
+ccrs-react -> ccrs-langgraph -> selected Java modules
 ```
 
 `ccrs-jacamo` must not import Hypermedea, LangChain4j, A2A, or dotenv classes.
@@ -74,6 +84,13 @@ with `--release 21`. One Git repository per module is not required: independent
 source builds plus clean coordinate-based consumption define the physical
 boundary. The `.jcm` files, AgentSpeak programs, environment integration, logs,
 and experiments are application-owned and live only in `ccrs-bdi`.
+
+The Python adapter follows an equivalent physical boundary. The
+[ccrs-langgraph](ccrs-langgraph) directory is a complete Python distribution
+with its own metadata, reusable tests, bundled resolver, build artifacts, and
+release workflow. It must build and import without `ccrs-react`; the concrete
+ReAct application must consume the installed `ccrs_langgraph` namespace and
+must not retain an embedded adapter copy.
 
 ## Published Dependency And Documentation Contract
 
@@ -129,6 +146,12 @@ Packages by default or an explicit `ccrsRepositoryUrl`; its `build` resolves all
 runtime jars, sources jars, Javadocs jars, POMs, and Gradle module metadata and
 its `run` verifies the public LangChain4j API and service providers. Normal
 pull-request and branch builds never publish.
+
+`ccrs-langgraph` is published separately as wheel and source archives on this
+repository's GitHub Releases because GitHub Packages has no PyPI-compatible
+registry. Its scoped release tags use `ccrs-langgraph-v<version>`. The bundled
+resolver then downloads the Java Maven coordinates from GitHub Packages using
+consumer-provided credentials; no credentials are built into the wheel.
 
 ## Current Important Decisions
 
@@ -607,6 +630,7 @@ ccrs-a2a/README.md
 ccrs-hypermedea/README.md
 ccrs-workspace/README.md
 examples/ccrs-library-consumer/README.md
+ccrs-langgraph/README.md
 ```
 
 ## Current State
@@ -635,6 +659,9 @@ Implemented toward the split:
 - the separate BDI application resolves selected modules through Maven
   coordinates and exclusively owns the `.jcm`, `.asl`, environment, logging,
   and experiment content
+- `ccrs-langgraph` is owned by this repository as a standalone Python
+  distribution, and `ccrs-react` contains only application integration code
+  that imports the installed package
 
 Known remaining coupling:
 

@@ -29,6 +29,17 @@ build
 *.ear
 *.zip
 *.tar.gz
+
+# Standalone ccrs-langgraph build and runtime-resolver state.
+ccrs-langgraph/build/
+ccrs-langgraph/dist/
+ccrs-langgraph/*.egg-info/
+ccrs-langgraph/src/*.egg-info/
+ccrs-langgraph/**/__pycache__/
+ccrs-langgraph/.venv*/
+ccrs-langgraph/src/ccrs_langgraph/_runtime_resolver/.gradle/
+ccrs-langgraph/src/ccrs_langgraph/_runtime_resolver/build/
+ccrs-langgraph/src/ccrs_langgraph/_runtime_resolver/.tmp-ccrs-runtime-*/
 *.rar
 
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
