@@ -33,9 +33,10 @@ regressions cannot pass publication checks.
 
 Hypermedea 0.4.2 caches a `ServiceLoader` that Java specifies as unsafe for
 concurrent access. `CcrsHttpOperation` therefore serializes response payload
-conversion through that loader. HTTP requests, response lifecycles, and
-per-agent history operations remain concurrent. This is a compatibility fix
-for the pinned version, not a dependency upgrade.
+conversion through that loader: HTTP requests may be in flight together, but
+response-to-Jason conversions queue briefly within one JVM. Source inspection
+of Hypermedea 0.5 found the same static cached loader, so the integration stays
+pinned to 0.4.2 and retains the monitor.
 
 With GitHub Packages credentials configured in the user-level Gradle
 properties file, run:
@@ -178,7 +179,7 @@ No changes required in AgentSpeak code!
   serialized while requests and the remaining response lifecycle stay
   concurrent. This prevents concurrent JaCaMo callbacks from corrupting the
   shared lazy provider iterator.
-- **Isolation:** The shared log partitions data by agent name, ensuring that Agent A never sees Agent B's interaction history during contingency reasoning.
+- **Isolation:** The shared log partitions data by logical agent name during normal routing. Names are not authenticated; duplicate names share a partition, so mutually untrusted tenants require separate JVMs, credentials, and logs.
 - **Wrapper + SPI:** We use `CcrsHypermedeaArtifact` (Wrapper) to set the context, and a standard Hypermedea SPI Binding (`CcrsHttpBinding`) to execute the logging hooks. This works around the restricted visibility of standard Hypermedea internals.
 
 ---

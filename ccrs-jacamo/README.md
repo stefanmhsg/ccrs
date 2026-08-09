@@ -70,15 +70,27 @@ startup and avoid competing runtime writers. Each contingency evaluation uses
 one consistent core configuration snapshot.
 
 The JaCaMo adapter can serve multiple mutually trusted agents in one JVM when
-each agent has its own `JasonCcrsContext`. The adapter does not authenticate an
-agent name and does not provide a tenant-security boundary. Run mutually
-untrusted users or tenants in separate JVMs with separate runtime wiring,
-credentials, and logs.
+each agent has its own `JasonCcrsContext`. Agent names are logical routing keys,
+not authenticated identities: duplicate names share a history partition, and
+direct API callers can request another name. Run mutually untrusted users or
+tenants in separate JVMs with separate runtime wiring, credentials, and logs.
+
+`CcrsAgentArch` treats opportunistic `ccrs/3` beliefs as source-scoped current
+state. Updating or removing one RDF source replaces only that source's
+architecture-produced guidance. `CcrsAgent` ties single-percept guidance to a
+stable evidence identifier and removes it with the percept. Contingency notes
+are persistent and are not part of either refresh lifecycle. CArtAgO observable
+properties enter through `CcrsAgentArch`'s direct belief-base hooks; ordinary
+environment percepts enter through `CcrsAgent.buf`, so one observable is not
+scanned by both producers in the supported integration path.
 
 ## Optional Strategy Capabilities
 
-The contingency internal action creates its `ContingencyCcrs` through
-`CcrsJacamoRuntime`. The default supplier uses `ServiceLoader` for
+The contingency internal action obtains a process-wide configuration generation
+of `ContingencyCcrs` through `CcrsJacamoRuntime`; it is shared by all agents and
+is not per-agent configuration. Setters invalidate the generation for the next
+lookup while an evaluation already in progress keeps its captured evaluator.
+The default supplier uses `ServiceLoader` for
 `ccrs.core.contingency.CcrsStrategyProvider`.
 
 This is the plugin point for optional strategy capabilities. The JaCaMo adapter

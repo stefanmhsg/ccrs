@@ -7,6 +7,10 @@ package ccrs.core.contingency;
  * - Mocking for tests
  * - Different LLM providers (OpenAI, Azure, local, etc.)
  * - Configuration flexibility (API keys, models, parameters)
+ *
+ * <p>Components shared by an evaluator ({@code LlmClient}, {@link PromptBuilder},
+ * {@link LlmResponseParser}, and their model client) must support concurrent calls
+ * and must not be mutated after registration.</p>
  */
 @FunctionalInterface
 public interface LlmClient {

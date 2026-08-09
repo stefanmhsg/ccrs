@@ -7,16 +7,15 @@ import ccrs.core.opportunistic.*;
 import ccrs.core.rdf.*;
 import ccrs.jacamo.jason.JasonRdfAdapter;
 import ccrs.jacamo.jason.contingency.JasonCcrsContext;
+import ccrs.jacamo.jason.opportunistic.OpportunisticBeliefLifecycle;
 import jaca.CAgentArch;
 import jason.JasonException;
 import jason.asSemantics.Intention;
 import jason.asSyntax.*;
 
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.Map;
 
 /**
  * CArtAgO architecture extension with opportunistic CCRS for artifact observables.
@@ -30,10 +29,10 @@ public class CcrsAgentArch extends CAgentArch {
     private OpportunisticCcrs ccrsScanner;
     private CcrsVocabulary vocabulary;
     
-    // Buffers RDF triples arriving in the current perception cycle
-    // Key: "ArtifactName:SourceURI" (or just ArtifactName)
-    private final Map<String, List<RdfTriple>> perceptionBatch = new ConcurrentHashMap<>();
-    private final Map<String, ArtifactId> sourceMap = new ConcurrentHashMap<>();
+    // Current materialized RDF state is per architecture/agent and per logical source.
+    private final OpportunisticSourceState sourceState = new OpportunisticSourceState();
+    private final Map<String, ArtifactId> sourceMap = new HashMap<>();
+    private final Object flushLock = new Object();
 
     // Flag to ensure we only register the flush callback once per cycle
     private boolean flushScheduled = false;
@@ -110,6 +109,22 @@ public class CcrsAgentArch extends CAgentArch {
         }
     }
 
+    /** Keeps the source snapshot in sync with CArtAgO observable removals. */
+    @Override
+    public boolean removeObsPropertiesBel(ArtifactId source, ArtifactObsProperty prop, Atom nsp) {
+        boolean removed = super.removeObsPropertiesBel(source, prop, nsp);
+        try {
+            Literal proxyLiteral = convertToProxyLiteral(prop, nsp);
+            if (isRdfObservable(proxyLiteral)) {
+                removeFromCcrs(proxyLiteral, source);
+            }
+        } catch (Exception ex) {
+            logger.log(Level.WARNING,
+                "Error removing observable property from Opportunistic-CCRS: " + prop, ex);
+        }
+        return removed;
+    }
+
     /**
      * Helper to verify if an observable is an RDF triple suitable for scanning.
      * This mimics the private logic in CAgentArch but is simplified for our read-only needs.
@@ -155,16 +170,29 @@ public class CcrsAgentArch extends CAgentArch {
         // Determine the "Logical Source" (e.g. the URL of the resource, not just the artifact name)
         String logicalSource = extractLogicalSource(rdfLiteral, sourceArtifact);
 
-        synchronized (perceptionBatch) {
-            pendingBatches.computeIfAbsent(logicalSource, k -> new ArrayList<>()).add(triple);
+        sourceState.add(logicalSource, triple);
+        synchronized (flushLock) {
             sourceMap.put(logicalSource, sourceArtifact);
-            
             if (!flushScheduled) {
-                scheduleBatchFlush();
                 flushScheduled = true;
+                scheduleBatchFlush();
             }
         }
-        
+    }
+
+    private void removeFromCcrs(Literal rdfLiteral, ArtifactId sourceArtifact) throws JasonException {
+        RdfTriple triple = JasonRdfAdapter.toRdfTriple(rdfLiteral);
+        if (triple == null) return;
+
+        String logicalSource = extractLogicalSource(rdfLiteral, sourceArtifact);
+        sourceState.remove(logicalSource, triple);
+        synchronized (flushLock) {
+            sourceMap.put(logicalSource, sourceArtifact);
+            if (!flushScheduled) {
+                flushScheduled = true;
+                scheduleBatchFlush();
+            }
+        }
     }
     
     /**
@@ -190,58 +218,57 @@ public class CcrsAgentArch extends CAgentArch {
 
     private void flushBatches() throws JasonException {
         Map<String, List<RdfTriple>> batchesToProcess;
-        
-        synchronized (perceptionBatch) {
-            // Swap buffers to minimize locking time
-            batchesToProcess = new HashMap<>(perceptionBatch);
-            perceptionBatch.clear();
+        Map<String, ArtifactId> artifacts = new HashMap<>();
+        synchronized (flushLock) {
+            batchesToProcess = sourceState.drainDirtySnapshots();
+            for (String source : batchesToProcess.keySet()) {
+                artifacts.put(source, sourceMap.get(source));
+            }
             flushScheduled = false;
         }
 
-        logger.fine("Abolishing previous opportunistic CCRS beliefs before processing new batches.");
-
-        // Remove ONLY ccrs/3 beliefs WITH origin(opportunistic-ccrs) annotation (from opportunistic scanning)
-        // Preserve ccrs/3 beliefs WITHOUT origin or with origin(contingency) (from contingency-CCRS strategies)
-        Iterator<Literal> it = getTS().getAg().getBB().getCandidateBeliefs(
-            new PredicateIndicator("ccrs", 3));
-        
-        if (it != null) {
-            List<Literal> toRemove = new ArrayList<>();
-            while (it.hasNext()) {
-                Literal ccrs = it.next();
-                // Check if it has origin(opportunistic-ccrs) annotation
-                Term originAnnot = ccrs.getAnnot("origin");
-                if (originAnnot != null && originAnnot.isStructure()) {
-                    Structure s = (Structure) originAnnot;
-                    if (s.getArity() > 0) {
-                        String originValue = s.getTerm(0).toString().replace("\"", "");
-                        if ("opportunistic-ccrs".equals(originValue)) {
-                            toRemove.add(ccrs);
-                        }
-                    }
-                }
-            }
-            
-            for (Literal l : toRemove) {
-                getTS().getAg().getBB().remove(l);
-            }
-        }
-        
-        logger.fine("Processing new batch of properties.");
-        
         if (batchesToProcess.isEmpty()) return;
 
-        // Process each batch (Grouped by logical source)
+        // Replace only the materialized view for each dirty source. Other sources and
+        // persistent contingency beliefs are deliberately outside this lifecycle.
         for (Map.Entry<String, List<RdfTriple>> entry : batchesToProcess.entrySet()) {
             String sourceKey = entry.getKey();
             List<RdfTriple> triples = entry.getValue();
-            ArtifactId artifactId = sourceMap.get(sourceKey);
-            
+            ArtifactId artifactId = artifacts.get(sourceKey);
+
+            removeArchitectureBeliefs(sourceKey);
             processSingleBatch(triples, sourceKey, artifactId);
+            if (triples.isEmpty()) {
+                synchronized (flushLock) {
+                    sourceMap.remove(sourceKey, artifactId);
+                }
+            }
         }
-        
-        // Clean up source map
-        sourceMap.keySet().retainAll(perceptionBatch.keySet());
+    }
+
+    private void removeArchitectureBeliefs(String source) {
+        Iterator<Literal> candidates = getTS().getAg().getBB().getCandidateBeliefs(
+            new PredicateIndicator("ccrs", 3));
+        if (candidates == null) return;
+
+        List<Literal> removed = new ArrayList<>();
+        while (candidates.hasNext()) {
+            Literal belief = candidates.next();
+            if (OpportunisticBeliefLifecycle.isOwnedBy(
+                    belief,
+                    OpportunisticBeliefLifecycle.ARTIFACT_BATCH_PRODUCER,
+                    source,
+                    null)) {
+                removed.add(belief);
+            }
+        }
+        for (Literal belief : removed) {
+            if (getTS().getAg().getBB().remove(belief)) {
+                Trigger trigger = new Trigger(
+                    Trigger.TEOperator.del, Trigger.TEType.belief, belief.copy());
+                getTS().updateEvents(new jason.asSemantics.Event(trigger, Intention.EmptyInt));
+            }
+        }
     }
 
     /**
@@ -253,13 +280,23 @@ public class CcrsAgentArch extends CAgentArch {
         // context gets passed to the scanner and results in OpportunisticResult metadata map. Metadata here gets converted to Belief annotations 1:1.
         Map<String, Object> context = new HashMap<>();
         context.put("source", sourceKey);
-        context.put("artifact_name", artifactId.getName());
-        context.put("workspace", artifactId.getWorkspaceId().getName());
-        context.put("origin", "opportunistic-ccrs");
+        if (artifactId != null) {
+            context.put("artifact_name", artifactId.getName());
+            if (artifactId.getWorkspaceId() != null) {
+                context.put("workspace", artifactId.getWorkspaceId().getName());
+            }
+        }
+        context.put("origin", OpportunisticBeliefLifecycle.ORIGIN);
+        context.put("producer", OpportunisticBeliefLifecycle.ARTIFACT_BATCH_PRODUCER);
 
         List<OpportunisticResult> results = ccrsScanner.scanAll(triples, context);
 
         for (OpportunisticResult r : results) {
+            OpportunisticBeliefLifecycle.annotate(
+                r,
+                sourceKey,
+                OpportunisticBeliefLifecycle.ARTIFACT_BATCH_PRODUCER,
+                null);
             // Create the CCRS belief: ccrs(Target, PatternType, Utility)[source(Source), metadata(Key, Value), ...]
             // All annotations come from the context map via JasonRdfAdapter
             Literal ccrsBelief = JasonRdfAdapter.createCcrsBelief(
@@ -317,10 +354,6 @@ public class CcrsAgentArch extends CAgentArch {
                 }
             }
         }
-        return artifact.getName();
+        return artifact != null ? artifact.getName() : "unknown";
     }
-    
-    // Re-declare pendingBatches purely for the class scope (used in synchronized blocks)
-    // Note: In the logic above I used 'perceptionBatch', renaming locally to match field definition
-    private final Map<String, List<RdfTriple>> pendingBatches = perceptionBatch; 
 }

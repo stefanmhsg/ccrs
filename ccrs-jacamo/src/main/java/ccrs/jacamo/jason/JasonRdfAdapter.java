@@ -58,7 +58,10 @@ public class JasonRdfAdapter {
             
             // Add other metadata
             result.getMetadataMap().forEach((k, v) -> {
-                ccrs.addAnnot(ASSyntax.createStructure(k, ASSyntax.createString(v)));
+                // source and pattern_id already have canonical annotations above.
+                if (!"source".equals(k) && !"pattern_id".equals(k)) {
+                    ccrs.addAnnot(ASSyntax.createStructure(k, ASSyntax.createString(v)));
+                }
             });
             
             return ccrs;

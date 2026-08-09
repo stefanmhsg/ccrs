@@ -45,8 +45,6 @@ public class evaluate extends DefaultInternalAction {
 
     private static final Logger logger = Logger.getLogger(evaluate.class.getName());
 
-    private static volatile ContingencyCcrs contingencyCcrs;
-
     @Override
     public Object execute(TransitionSystem ts, Unifier un, Term[] args) throws Exception {
 
@@ -56,7 +54,7 @@ public class evaluate extends DefaultInternalAction {
             );
         }
 
-        ContingencyCcrs ccrs = getCcrs();
+        ContingencyCcrs ccrs = CcrsJacamoRuntime.getOrCreateContingencyCcrs();
 
         // Retrieve the pre-initialized context. CcrsAgentArch normally installs
         // this, but creating a fallback keeps the internal action usable in
@@ -535,16 +533,4 @@ public class evaluate extends DefaultInternalAction {
         }
     }
     
-    // ------------------------------------------------------------------
-    // CCRS wiring
-    // ------------------------------------------------------------------
-
-    private static synchronized ContingencyCcrs getCcrs() {
-        if (contingencyCcrs == null) {
-            contingencyCcrs = CcrsJacamoRuntime.createContingencyCcrs();
-            logger.info("[ContingencyCcrs] Contingency CCRS initialized via CcrsJacamoRuntime");
-        }
-        return contingencyCcrs;
-    }
-
 }

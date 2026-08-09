@@ -137,6 +137,13 @@ public class CcrsAgent extends Agent {
             */
                 
                 dels++;
+                List<Literal> derived = removeSinglePerceptDerivations(l);
+                dels += derived.size();
+                for (Literal removed : derived) {
+                    ts.updateEvents(new Event(
+                        new Trigger(TEOperator.del, TEType.belief, removed.copy()),
+                        Intention.EmptyInt));
+                }
                 perceptsInBB.remove(); // remove l as perception from BB
 
                 // new version (it is certain that l is in BB, only clone l when the event is relevant)
@@ -162,11 +169,13 @@ public class CcrsAgent extends Agent {
                     List<Literal>[] result = brf(lp, null, Intention.EmptyInt, false);
 
                     if (result != null && result[0] != null && !result[0].isEmpty()) {
-                        adds++;
+                        adds += result[0].size();
                         logger.fine("BUF added percept " + lp);
-                        Trigger te = new Trigger(TEOperator.add, TEType.belief, lp);
-                        ts.updateEvents(new Event(te, Intention.EmptyInt));
-                        logger.fine("BUF generated event for added percept " + lp);
+                        for (Literal added : result[0]) {
+                            Trigger te = new Trigger(TEOperator.add, TEType.belief, added.copy());
+                            ts.updateEvents(new Event(te, Intention.EmptyInt));
+                            logger.fine("BUF generated event for added belief " + added);
+                        }
                     }
                 } catch (RevisionFailedException e) {
                     logger.log(Level.WARNING, "BRF failed while adding percept " + lp, e);
@@ -278,7 +287,10 @@ public class CcrsAgent extends Agent {
                             result = new List[2];
                             result[0] = Collections.emptyList();
                         }
-                        result[1] = Collections.singletonList(beliefToDel);
+                        List<Literal> removedBeliefs = new ArrayList<>();
+                        removedBeliefs.add(beliefToDel);
+                        removedBeliefs.addAll(removeSinglePerceptDerivations(beliefToDel));
+                        result[1] = removedBeliefs;
                     }
                 }
             } catch (Exception e) {
@@ -306,12 +318,16 @@ public class CcrsAgent extends Agent {
         RdfTriple triple = JasonRdfAdapter.toRdfTriple(percept);
         if (triple != null) {
             Map<String, Object> context = new HashMap<>();
-            context. put("source", sourceAnchor);
+            context.put("source", sourceAnchor);
             
             Optional<OpportunisticResult> result = ccrsScanner.scan(triple, context);
             
             if (result.isPresent()) {
-                OpportunisticResult r = result.get();
+                OpportunisticResult r = OpportunisticBeliefLifecycle.annotate(
+                    result.get(),
+                    sourceAnchor,
+                    OpportunisticBeliefLifecycle.SINGLE_PERCEPT_PRODUCER,
+                    OpportunisticBeliefLifecycle.evidenceId(sourceAnchor, triple));
                 
                 Literal ccrsBelief = JasonRdfAdapter.createCcrsBelief(r, sourceAnchor);
                 
@@ -341,6 +357,36 @@ public class CcrsAgent extends Agent {
             }
         }
         return "unknown";
+    }
+
+    private List<Literal> removeSinglePerceptDerivations(Literal percept) {
+        RdfTriple triple = JasonRdfAdapter.toRdfTriple(percept);
+        if (triple == null) {
+            return Collections.emptyList();
+        }
+
+        String source = extractSourceAnchor(percept);
+        String evidenceId = OpportunisticBeliefLifecycle.evidenceId(source, triple);
+        Iterator<Literal> candidates = getBB().getCandidateBeliefs(new PredicateIndicator("ccrs", 3));
+        if (candidates == null) {
+            return Collections.emptyList();
+        }
+
+        List<Literal> removed = new ArrayList<>();
+        while (candidates.hasNext()) {
+            Literal candidate = candidates.next();
+            if (OpportunisticBeliefLifecycle.isOwnedBy(
+                    candidate,
+                    OpportunisticBeliefLifecycle.SINGLE_PERCEPT_PRODUCER,
+                    source,
+                    evidenceId)) {
+                removed.add(candidate);
+            }
+        }
+        for (Literal belief : removed) {
+            getBB().remove(belief);
+        }
+        return removed;
     }
 
 

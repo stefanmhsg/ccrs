@@ -46,6 +46,7 @@ public class ConsultationStrategy implements CcrsStrategy {
      * Abstract interface for consultation channels.
      * Implementations can be LLM-based, multi-agent, or human-in-the-loop.
      */
+    /** Shared channel implementations must support concurrent calls and immutable configuration. */
     public interface ConsultationChannel {
         
         /**

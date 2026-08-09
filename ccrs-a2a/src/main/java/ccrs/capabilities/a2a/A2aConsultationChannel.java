@@ -1,7 +1,6 @@
 package ccrs.capabilities.a2a;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -10,6 +9,7 @@ import java.util.Optional;
 import java.net.URI;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 import java.util.logging.Logger;
 
@@ -43,6 +43,9 @@ import org.apache.jena.rdf.model.Resource;
  * The channel discovers an agent card URI from the consultation context,
  * resolves the card, invokes the first available skill, and returns the
  * resulting text payload, typically from an RDF/Turtle artifact.
+ *
+ * <p>Cached cards must be stable and caller-independent for this channel's
+ * lifetime; credential-personalized discovery requires a separately scoped channel.</p>
  */
 public class A2aConsultationChannel implements ConsultationStrategy.ConsultationChannel {
 
@@ -55,16 +58,25 @@ public class A2aConsultationChannel implements ConsultationStrategy.Consultation
     private final A2aConfig config;
     private final A2AHttpClient httpClient;
 
-    private final Map<String, AgentCard> cachedCards = new HashMap<>();
-    private final Map<String, String> cachedAgentCardUris = new HashMap<>();
+    private final Map<String, AgentCard> cachedCards = new ConcurrentHashMap<>();
+    private final Map<String, String> cachedAgentCardUris = new ConcurrentHashMap<>();
+    private final AgentCardLoader cardLoader;
 
     public A2aConsultationChannel(A2aConfig config) {
         this(config, new JdkA2AHttpClient());
     }
 
     A2aConsultationChannel(A2aConfig config, A2AHttpClient httpClient) {
+        this(config, httpClient, null);
+    }
+
+    A2aConsultationChannel(
+            A2aConfig config,
+            A2AHttpClient httpClient,
+            AgentCardLoader cardLoader) {
         this.config = config;
         this.httpClient = httpClient;
+        this.cardLoader = cardLoader != null ? cardLoader : this::resolveCardFromUri;
     }
 
     @Override
@@ -295,38 +307,33 @@ public class A2aConsultationChannel implements ConsultationStrategy.Consultation
             return Optional.empty();
         }
 
-        synchronized (cachedAgentCardUris) {
-            String cached = cachedAgentCardUris.get(agentUri);
-            if (cached != null) {
-                logger.info("[A2A] Using cached agent card URI for " + agentUri + ": " + cached);
-                return Optional.of(cached);
-            }
+        String cached = cachedAgentCardUris.get(agentUri);
+        if (cached != null) {
+            logger.info("[A2A] Using cached agent card URI for " + agentUri + ": " + cached);
+            return Optional.of(cached);
         }
 
         logger.info("[A2A] Dereferencing agent URI to discover agent card: " + agentUri);
         Optional<String> discovered = discoverAgentCardUri(agentUri);
         discovered.ifPresent(uri -> {
-            synchronized (cachedAgentCardUris) {
-                cachedAgentCardUris.put(agentUri, uri);
-            }
+            cachedAgentCardUris.putIfAbsent(agentUri, uri);
             logger.info("[A2A] Cached discovered agent card URI for " + agentUri + ": " + uri);
         });
         return discovered;
     }
 
-    private AgentCard resolveAgentCard(String agentCardUri) throws Exception {
-        synchronized (cachedCards) {
-            AgentCard cached = cachedCards.get(agentCardUri);
-            if (cached != null) {
-                logger.info("[A2A] Using cached agent card object for " + agentCardUri);
-                return cached;
-            }
-
-            logger.info("[A2A] Resolving agent card object from URI: " + agentCardUri);
-            AgentCard card = resolveCardFromUri(agentCardUri);
-            cachedCards.put(agentCardUri, card);
-            return card;
+    AgentCard resolveAgentCard(String agentCardUri) throws Exception {
+        AgentCard cached = cachedCards.get(agentCardUri);
+        if (cached != null) {
+            logger.info("[A2A] Using cached agent card object for " + agentCardUri);
+            return cached;
         }
+
+        // Network resolution is intentionally outside the shared map operation.
+        logger.info("[A2A] Resolving agent card object from URI: " + agentCardUri);
+        AgentCard resolved = cardLoader.resolve(agentCardUri);
+        AgentCard existing = cachedCards.putIfAbsent(agentCardUri, resolved);
+        return existing != null ? existing : resolved;
     }
 
     private AgentCard resolveCardFromUri(String agentCardUri) throws Exception {
@@ -662,5 +669,10 @@ public class A2aConsultationChannel implements ConsultationStrategy.Consultation
             return s;
         }
         return null;
+    }
+
+    @FunctionalInterface
+    interface AgentCardLoader {
+        AgentCard resolve(String agentCardUri) throws Exception;
     }
 }

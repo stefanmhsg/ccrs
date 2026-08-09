@@ -31,6 +31,9 @@ public final class CcrsJacamoRuntime {
     private static volatile Supplier<ContingencyCcrs> contingencyCcrsSupplier =
         CcrsJacamoRuntime::createDefaultContingencyCcrs;
 
+    private static final Object contingencyLock = new Object();
+    private static volatile ContingencyCcrs cachedContingencyCcrs;
+
     private CcrsJacamoRuntime() {
     }
 
@@ -49,23 +52,50 @@ public final class CcrsJacamoRuntime {
     }
 
     public static void setContingencyConfiguration(ContingencyConfiguration configuration) {
-        contingencyConfiguration = configuration != null
-            ? configuration
-            : ContingencyConfiguration.defaults();
+        synchronized (contingencyLock) {
+            contingencyConfiguration = configuration != null
+                ? configuration
+                : ContingencyConfiguration.defaults();
+            cachedContingencyCcrs = null;
+        }
     }
 
     public static ContingencyCcrs createContingencyCcrs() {
         return contingencyCcrsSupplier.get();
     }
 
+    /**
+     * Returns the evaluator shared by all agents in the current JVM configuration generation.
+     *
+     * @return the shared evaluator
+     */
+    public static ContingencyCcrs getOrCreateContingencyCcrs() {
+        ContingencyCcrs current = cachedContingencyCcrs;
+        if (current != null) {
+            return current;
+        }
+        synchronized (contingencyLock) {
+            if (cachedContingencyCcrs == null) {
+                cachedContingencyCcrs = contingencyCcrsSupplier.get();
+            }
+            return cachedContingencyCcrs;
+        }
+    }
+
     public static void setContingencyCcrsSupplier(Supplier<ContingencyCcrs> supplier) {
-        contingencyCcrsSupplier = Objects.requireNonNull(supplier, "supplier");
+        synchronized (contingencyLock) {
+            contingencyCcrsSupplier = Objects.requireNonNull(supplier, "supplier");
+            cachedContingencyCcrs = null;
+        }
     }
 
     public static void reset() {
         interactionHistoryProvider = InteractionHistoryProvider.empty();
-        contingencyConfiguration = ContingencyConfiguration.defaults();
-        contingencyCcrsSupplier = CcrsJacamoRuntime::createDefaultContingencyCcrs;
+        synchronized (contingencyLock) {
+            contingencyConfiguration = ContingencyConfiguration.defaults();
+            contingencyCcrsSupplier = CcrsJacamoRuntime::createDefaultContingencyCcrs;
+            cachedContingencyCcrs = null;
+        }
     }
 
     private static ContingencyCcrs createDefaultContingencyCcrs() {

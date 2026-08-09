@@ -73,13 +73,14 @@ unchanged.
   Reason: Gradle project dependencies can hide incorrect Maven scopes, missing resources, or dependencies that are available only through the root build.
   Added/Updated: 2026-08-08 / Codex
 
-- Rule: Preserve full LLM request and response logging for developer-operated
-  multi-agent systems; improve correlation rather than redacting or removing
-  those payloads.
+- Rule: Preserve the existing full LLM request and response log markers and
+  multiline payload layout exactly.
   Reason: Shared diagnostic visibility is intentional for this research
-  artifact. The separate-JVM rule remains the boundary for mutually untrusted
-  tenants.
-  Added/Updated: 2026-08-08 / User direction
+  artifact, and the PowerShell report pipelines in the separate `ccrs-bdi` and
+  `ccrs-react` experiment repositories are compatibility consumers. Keep
+  correlation in the existing structured `[CCRS-EVENT]` stream and do not add
+  a new LLM log event or rewrite the free-text payload records.
+  Added/Updated: 2026-08-08 / User direction; refined after report-parser audit
 
 - Rule: Keep Hypermedea pinned to `0.4.2` during WP7 and treat newer versions
   as source-review subjects, not automatic upgrades.
@@ -101,8 +102,7 @@ unchanged.
 
 | NOW | NEXT | LATER |
 | --- | --- | --- |
-| WP6: Extract the BDI application as a package consumer | WP7: Harden same-JVM multi-agent lifecycle and capability concurrency | WP8: Harden releases and consider repository extraction |
-|  |  | WP9: Migrate additional consumers such as `ccrs-react` from Maven Local |
+| WP6: Extract the BDI application as a package consumer | WP8: Harden releases and consider repository extraction | WP9: Migrate additional consumers such as `ccrs-react` from Maven Local |
 
 ## Progress
 
@@ -144,8 +144,15 @@ unchanged.
   defined WP7 as one bounded package covering opportunistic-belief lifecycle,
   LLM concurrency, runtime reconfiguration, A2A cache scope, Hypermedea 0.5
   comparison, and agent-identity documentation.
-- [ ] Complete WP7 before treating same-JVM multi-agent behavior as a stable
-  public contract.
+- [x] (2026-08-08) Audited the `ccrs-bdi` and `ccrs-react` PowerShell report
+  parsers and established the pre-WP7 compatibility baseline. The BDI
+  black-box suite passed 2/2, and both React V1 and V2 reports regenerated from
+  checked-in logs containing the existing full LLM request/response blocks.
+- [x] (2026-08-08) Completed WP7 with source/evidence-scoped opportunistic
+  lifecycle cleanup, runtime-owned evaluator generations, overlapping core and
+  local-HTTP LLM regressions, lock-free A2A card resolution, pinned Hypermedea
+  coverage, and trusted-agent-name documentation. All 124 tests, the composite,
+  and all three experiment-report compatibility gates passed.
 - [ ] Complete WP8 release gates before publishing the first non-snapshot version.
 
 ## Surprises & Discoveries
@@ -242,14 +249,11 @@ unchanged.
   static initialization monitor now pass concurrent reader/writer and
   24-caller initialization tests.
 
-- Observation: The two opportunistic JaCaMo integration paths do not implement
-  the same derived-belief lifecycle.
-  Evidence: [CcrsAgentArch.java](ccrs-jacamo/src/main/java/ccrs/jacamo/jaca/CcrsAgentArch.java)
-  deletes every `ccrs/3` belief carrying `origin(opportunistic-ccrs)` before a
-  flush and recreates only sources present in that flush. In contrast,
-  [CcrsAgent.java](ccrs-jacamo/src/main/java/ccrs/jacamo/jason/opportunistic/CcrsAgent.java)
-  supplies only `source` metadata, so its derived beliefs do not carry that
-  origin and are not removed when their source percept disappears.
+- Observation: Before WP7, the two opportunistic JaCaMo integration paths did
+  not implement the same derived-belief lifecycle.
+  Evidence: WP7 replaced the architecture's global sweep with per-source
+  materialized state and gave the BUF path deterministic evidence ownership.
+  Two-source and actual Jason BUF deletion-event regressions now pass.
 
 - Observation: The default LangChain4j provider does not serialize concurrent
   agent requests inside CCRS or LangChain4j.
@@ -258,16 +262,15 @@ unchanged.
   `OpenAiChatModel.doChat` builds request and response data in local variables,
   and its default JDK HTTP adapter calls the shared immutable
   `java.net.http.HttpClient` once per caller. A provider quota, connection
-  limit, or custom `ChatModel` may still queue calls outside CCRS.
+  limit, or custom `ChatModel` may still queue calls outside CCRS. WP7's core
+  barrier fake and local OpenAI-compatible HTTP server both observed two active
+  calls before either response was released.
 
-- Observation: The A2A card-object cache currently holds one map monitor while
+- Observation: Before WP7, the A2A card-object cache held one map monitor while
   resolving a card over the network.
-  Evidence: [A2aConsultationChannel.java](ccrs-a2a/src/main/java/ccrs/capabilities/a2a/A2aConsultationChannel.java)
-  invokes `resolveCardFromUri(...)` inside `synchronized (cachedCards)`. Agent
-  A can therefore delay Agent B's first card resolution even when they use
-  different card URIs. The response accumulators and clients themselves are
-  per call, so this is adapter-owned head-of-line blocking rather than response
-  leakage or a core consultation defect.
+  Evidence: WP7 moved resolution outside a `ConcurrentHashMap` lookup and uses
+  `putIfAbsent` after resolution. A two-URI barrier regression now proves both
+  resolutions overlap and return their own card.
 
 - Observation: Hypermedea `0.5` does not remove the representation-handler
   concurrency defect covered by the CCRS wrapper.
@@ -279,14 +282,26 @@ unchanged.
   directly. The current global payload-conversion monitor remains necessary;
   only conversion is serialized, not the preceding HTTP request.
 
-- Observation: JaCaMo runtime configuration is safely published but becomes
-  sticky after the first contingency evaluation.
-  Evidence: [evaluate.java](ccrs-jacamo/src/main/java/ccrs/jacamo/jason/contingency/evaluate.java)
-  caches the first `ContingencyCcrs` in its own static field, while
-  [CcrsJacamoRuntime.java](ccrs-jacamo/src/main/java/ccrs/jacamo/CcrsJacamoRuntime.java)
-  can subsequently replace the configuration or supplier without invalidating
-  that evaluator. Centralized cache ownership and invalidation can correct this
-  with a small, deterministic change.
+- Observation: Before WP7, JaCaMo runtime configuration became sticky after the
+  first contingency evaluation.
+  Evidence: WP7 removed `evaluate`'s static field. `CcrsJacamoRuntime` now owns
+  synchronized initialization and invalidates the one JVM-wide generation on
+  configuration, supplier, and reset changes; 24-caller and generation-change
+  regressions pass.
+
+- Observation: The BDI and React experiment report scripts consume structured
+  CCRS records, not the raw multiline full-LLM payload records.
+  Evidence: The BDI
+  [parse-experiment-logs.ps1](../ccrs-bdi/experiments/scripts/parse-experiment-logs.ps1)
+  searches for `[CCRS-EVENT]` and parses key/value fields. The React
+  [parse-experiment-logs.ps1](../ccrs-react/experiments/scripts/parse-experiment-logs.ps1)
+  does the same for `[REACT-CCRS-EVENT]` and `[CCRS-EVENT]`, and collects Java
+  evidence only from `[JAVA-CCRS]` or `[CCRS-EVENT]` lines. Neither parser
+  treats `Full LLM request:` or `Full LLM response:` as report records. Keeping
+  those markers and their multiline layout unchanged is the lowest-risk
+  compatibility policy. Baseline verification passed the two BDI black-box
+  report tests and regenerated the React V1/V2 reports with respectively
+  1,315 and 1,277 contingency rows from their existing full-payload logs.
 
 ## Decision Log
 
@@ -393,7 +408,11 @@ unchanged.
   serialization; adding it would create the exact Agent-A-blocks-Agent-B
   behavior under investigation. Custom `LlmClient`, `ChatModel`, prompt
   builder, and parser implementations must satisfy the documented
-  concurrent-call contract or perform their own narrow synchronization.
+  concurrent-call contract or perform their own narrow synchronization. Keep
+  the existing full-request/full-response free-text format unchanged and add
+  only one brief concurrent-call statement to the generic `LlmClient` contract
+  or capability README. The existing structured events already carry
+  `agent_id`; do not introduce a new LLM correlation event.
   Date/Author: 2026-08-08 / User direction and Codex
 
 - Decision: Make opportunistic derived beliefs source-scoped materialized
@@ -420,6 +439,8 @@ unchanged.
   Rationale: This is the smallest non-sticky design. An evaluation already in
   progress retains its captured evaluator, while the next evaluation after a
   setter or reset deterministically receives a newly constructed evaluator.
+  This remains one process-wide evaluator and configuration generation shared
+  by all agents in the JVM; it does not create per-agent configuration.
   Date/Author: 2026-08-08 / User direction and Codex
 
 ## Context and Orientation
@@ -715,7 +736,7 @@ Before cleanup, `stefanmhsg/ccrs-extraction-staging`, the final `stefanmhsg/ccrs
 
 ### WP7: Harden same-JVM multi-agent lifecycle and capability concurrency
 
-Status: Next
+Status: Done
 
 Purpose: Make the trusted single-JVM contract precise and demonstrable for two
 or more agents. After this package, refreshing one opportunistic RDF source
@@ -730,9 +751,9 @@ Local context: Opportunistic scanning reaches a Jason agent by two paths.
 scans an individual percept during belief revision.
 [CcrsAgentArch.java](ccrs-jacamo/src/main/java/ccrs/jacamo/jaca/CcrsAgentArch.java)
 buffers RDF observable properties by logical source and calls `scanAll` at the
-next cycle boundary. Both create `ccrs(Target, Pattern, Utility)` beliefs, but
-only the architecture path currently marks them
-`origin(opportunistic-ccrs)`. The
+next cycle boundary. Both create `ccrs(Target, Pattern, Utility)` beliefs and
+now identify their origin, source, and producer; single-percept results also
+carry a stable evidence ID. The
 [prioritize.java](ccrs-jacamo/src/main/java/ccrs/jacamo/jason/opportunistic/prioritize.java)
 internal action considers every `ccrs/3` belief and keeps the highest utility
 per target, so stale beliefs can affect later option ordering even though they
@@ -755,9 +776,9 @@ and custom components may still queue calls.
 shares discovered agent-card metadata, not consultation responses. Its response
 references and A2A client are created per request. The default card cache is a
 capability-level optimization and assumes a card is stable and independent of
-the calling agent's credentials. The current card-object lookup nevertheless
-holds its cache monitor during network resolution and creates avoidable
-cross-agent head-of-line blocking. Hypermedea is a different case:
+the calling agent's credentials. WP7 resolves cache misses outside the
+concurrent map operation, avoiding cross-agent network head-of-line blocking.
+Hypermedea is a different case:
 [CcrsHttpOperation.java](ccrs-hypermedea/src/main/java/ccrs/hypermedea/CcrsHttpOperation.java)
 must serialize payload conversion because both upstream `0.4.2` and `0.5`
 iterate one static `ServiceLoader`; HTTP dispatch remains concurrent, but one
@@ -797,8 +818,12 @@ released. No API key or live model is required. Document that `LlmClient`,
 `ChatModel`, `PromptBuilder`, and `LlmResponseParser` instances installed in a
 shared evaluator must support concurrent calls and must not be mutated after
 registration unless they provide their own synchronization. Preserve full
-payload logging, but prefix the request and response records with agent ID and
-a per-evaluation correlation ID so interleaved logs remain attributable.
+payload logging without changing the existing `Full LLM request:` and
+`Full LLM response:` markers or their multiline layout. Add only a brief
+concurrency sentence to the generic contract or capability documentation. The
+existing structured events already include `agent_id`, and the experiment
+parsers correlate invocations from the structured event sequence; do not add a
+new LLM event or prefix the raw payload records.
 
 The process-wide JaCaMo evaluator cache is a quick fix, not a redesign. Move
 the cached `ContingencyCcrs` from `evaluate` into `CcrsJacamoRuntime`. A
@@ -806,7 +831,9 @@ synchronized get-or-create operation owns initialization. Configuration,
 supplier, and reset methods invalidate that cache. An in-flight call keeps the
 evaluator it already captured; the first later call creates one evaluator from
 the new configuration. This avoids both sticky configuration and mid-call
-replacement.
+replacement. It does not create per-agent configuration: all agents in one JVM
+share the same evaluator/configuration generation, while their `CcrsContext`,
+history, situation, and results remain per invocation and per agent.
 
 Keep A2A policy in `ccrs-a2a`. Replace the broad map monitor with concurrent
 lookups that resolve a cache miss outside the map lock and use `putIfAbsent`
@@ -830,34 +857,40 @@ direct API access under another name can share/read that partition.
 
 Todos:
 
-- [ ] Add source-scoped opportunistic lifecycle tests for two sources S1 and
+- [x] Add source-scoped opportunistic lifecycle tests for two sources S1 and
   S2: refreshing only S1 preserves S2; removing S1 removes only S1; contingency
   notes remain present.
-- [ ] Give both opportunistic producer paths consistent `origin`, `source`,
+- [x] Give both opportunistic producer paths consistent `origin`, `source`,
   producer, and evidence metadata, and replace the architecture's global
   opportunistic-belief sweep with per-source replacement over complete current
   source state.
-- [ ] Remove individual-percept-derived beliefs when their original percept is
+- [x] Remove individual-percept-derived beliefs when their original percept is
   deleted, including correct Jason deletion events, and characterize/deduplicate
   any RDF percept handled by both paths.
-- [ ] Add a two-caller core LLM concurrency/cross-talk regression and a
+- [x] Add a two-caller core LLM concurrency/cross-talk regression and a
   LangChain4j 1.10.0 local-HTTP concurrency test that observes both requests
   before releasing either response.
-- [ ] Document the concurrent-call/no-post-registration-mutation contract for
+- [x] Document the concurrent-call/no-post-registration-mutation contract for
   shared `LlmClient`, `ChatModel`, `PromptBuilder`, `LlmResponseParser`, and
-  `ConsultationChannel` implementations; retain full request/response payload
-  logs and add agent/correlation fields.
-- [ ] Centralize evaluator caching and invalidation in `CcrsJacamoRuntime`,
+  `ConsultationChannel` implementations in one brief Javadoc or README
+  statement; retain the full request/response payload log format unchanged.
+- [x] Run the BDI report-generation black-box test and both checked-in React
+  experiment parsers against disposable output directories; confirm that
+  structured CCRS event counts and report generation remain valid without
+  teaching either parser a new LLM log format.
+- [x] Centralize evaluator caching and invalidation in `CcrsJacamoRuntime`,
   remove the duplicate static cache from `evaluate`, and test initialization,
-  reconfiguration, reset, and in-flight snapshot behavior.
-- [ ] Move A2A card network resolution outside the shared cache lock, test that
+  process-wide reconfiguration, reset, and in-flight snapshot behavior. Include
+  two differently named agents to prove they share the selected runtime
+  configuration rather than receiving agent-scoped configurations.
+- [x] Move A2A card network resolution outside the shared cache lock, test that
   different card URIs resolve concurrently without response cross-talk, and
   document the stable caller-independent card invariant plus the separate-scope
   mitigation.
-- [ ] Keep Hypermedea at `0.4.2`, record the source comparison with `0.5`, retain
+- [x] Keep Hypermedea at `0.4.2`, record the source comparison with `0.5`, retain
   the concurrent payload-conversion regression, and document request concurrency
   versus conversion serialization.
-- [ ] Add a short JaCaMo/Hypermedea documentation note that agent-name partitions
+- [x] Add a short JaCaMo/Hypermedea documentation note that agent-name partitions
   are trusted logical routing, not authorization, and that mutually untrusted
   tenants require separate JVMs, credentials, and logs.
 
@@ -874,6 +907,14 @@ changes and run:
     .\ccrs-hypermedea\gradlew.bat -p ccrs-hypermedea clean test
     .\ccrs-workspace\gradlew.bat -p ccrs-workspace --no-daemon --rerun-tasks verifyAll
 
+After the code and documentation changes, repeat the experiment compatibility
+gate. The React outputs are disposable and remain under the ignored CCRS
+`.gradle` directory:
+
+    powershell -ExecutionPolicy Bypass -File ..\ccrs-bdi\experiments\tests\test-report-generation.ps1
+    powershell -ExecutionPolicy Bypass -File ..\ccrs-react\experiments\scripts\write-report.ps1 -BatchId react-baseline-vs-ccrs-v1 -OutputDir S:/dev/ma/ccrs/.gradle/wp7-report-compat/react-v1
+    powershell -ExecutionPolicy Bypass -File ..\ccrs-react\experiments\scripts\write-report.ps1 -BatchId react-baseline-vs-ccrs-v2 -OutputDir S:/dev/ma/ccrs/.gradle/wp7-report-compat/react-v2
+
 Confirm the pinned dependency explicitly:
 
     .\ccrs-hypermedea\gradlew.bat -p ccrs-hypermedea dependencyInsight --dependency hypermedea --configuration runtimeClasspath
@@ -884,19 +925,36 @@ single-percept test fails on the current missing-origin path and passes when
 percept removal also removes its derived guidance. A two-agent LLM test reaches
 maximum concurrent calls of two and maps each response to its initiating
 agent; the local OpenAI-compatible server sees both requests before either is
-released. Runtime tests show one initialization per configuration generation,
-old configuration for an already-started call, and new configuration for the
-next call after a setter. Two different A2A card URIs resolve concurrently and
+released. The full LLM log markers and multiline payload layout are byte-for-
+byte compatible at their fixed framing points; the BDI report tests and both
+React report generations pass without parser changes. Runtime tests show one
+initialization per process-wide configuration generation, old configuration
+for an already-started call, and new shared configuration for every agent's
+next call after a setter; differently named agents do not receive separate
+runtime configurations. Two different A2A card URIs resolve concurrently and
 responses never cross. Hypermedea's 12-caller conversion test remains green,
 dependency insight selects exactly `0.4.2`, all five standalone builds and the
 composite pass, and no test launches agents or uses network services outside
 the local test process.
 
-Outcome and notes: Not started. The design audit is complete. Current source
-inspection establishes that default LLM calls are not library-serialized, the
-A2A card cache does contain an avoidable global network critical section,
-JaCaMo configuration is sticky after first evaluation, and Hypermedea `0.5`
-retains the same unsafe static representation-handler loader as `0.4.2`.
+Outcome and notes: Completed 2026-08-08. Opportunistic beliefs are now
+materialized views owned by `artifact-batch` plus logical source or by
+`single-percept` plus a deterministic evidence ID. The architecture keeps
+complete per-source RDF state and handles observable removals; the agent BUF
+removes evidence-owned derivations and emits deletion events. CArtAgO uses the
+architecture's direct belief-base hooks while ordinary environment percepts use
+BUF, so the supported path does not double-produce one observable.
+
+`CcrsJacamoRuntime` now owns exactly one evaluator per process-wide
+configuration generation. Setters and reset invalidate that generation without
+replacing references already captured by in-flight evaluations. Core and the
+default LangChain4j OpenAI adapter both demonstrated two overlapping callers;
+the full LLM payload log markers and multiline layout were left unchanged. A2A
+card resolution now occurs outside concurrent-map cache operations and may
+duplicate only an initial same-key lookup. Hypermedea remains pinned to `0.4.2`;
+HTTP requests remain concurrent while representation conversion is narrowly
+serialized. Agent-name partitions are documented as trusted logical routing,
+not authorization.
 
 ### WP8: Harden versioned releases and evaluate source-repository splitting
 
@@ -972,11 +1030,14 @@ Plan-wide acceptance requires all of the following observable behavior:
     cannot erase S2, removing a percept removes its own derivations, and
     contingency-origin notes remain persistent.
 13. Two default LangChain4j evaluations can overlap and return only their own
-    results. Full prompts and responses remain logged with agent and evaluation
-    correlation, while custom shared LLM components have an explicit
-    concurrent-call contract.
+    results. Full prompts and responses retain their existing markers and
+    multiline layout, both experiment report pipelines pass unchanged, and
+    custom shared LLM components have one brief explicit concurrent-call
+    contract.
 14. Changing the JaCaMo runtime configuration or evaluator supplier affects the
-    next evaluation but cannot change an already-running evaluation midway.
+    next evaluation for all agents in that JVM but cannot change an
+    already-running evaluation midway. This remains process-scoped
+    configuration, not per-agent configuration.
 15. Different A2A card URIs can resolve concurrently. Shared card caching is
     documented as capability-owned and valid only for stable,
     caller-independent card metadata; consultation responses remain per call.
@@ -1037,6 +1098,23 @@ the composite aggregate:
 All five standalone `clean build --rerun-tasks` runs passed, including
 Javadocs. The tests use fake operations, responses, contexts, strategies, and
 provider suppliers; they do not launch JaCaMo agents or call live services.
+
+WP7 executed each standalone `clean test` and then rebuilt every local source
+through the composite:
+
+    ccrs-core tests: 84 passed
+    ccrs-jacamo tests: 17 passed
+    ccrs-hypermedea tests: 10 passed
+    ccrs-langchain4j tests: 5 passed
+    ccrs-a2a tests: 8 passed
+    total: 124 passed
+    ccrs-workspace verifyAll: 39 tasks passed, including all Javadocs
+    Hypermedea runtime selection: org.hypermedea:hypermedea:0.4.2
+
+The post-change report compatibility run passed both BDI black-box tests and
+regenerated React V1/V2 reports with 1,315 and 1,277 contingency rows. Neither
+consumer repository was modified. The raw `Full LLM request:` and
+`Full LLM response:` statements remained unchanged in source.
 
 WP2 rebuilt the application and ran every focused module suite:
 
@@ -1237,7 +1315,11 @@ WP7 adds one runtime-owned accessor with this contract:
 `setContingencyConfiguration`, `setContingencyCcrsSupplier`, and `reset`
 invalidate the runtime-owned cached evaluator. The next accessor call creates
 exactly one replacement. The AgentSpeak `evaluate` action owns no separate
-static evaluator after this change.
+static evaluator after this change. The cache and its configuration are scoped
+to the JVM/application: every agent shares the same evaluator for a given
+configuration generation. Agent-specific situation, context, history, and
+results continue to be passed into each evaluation; this API does not provide
+per-agent strategy configuration.
 
 Every transient opportunistic `ccrs/3` belief created by JaCaMo must carry
 `origin(opportunistic-ccrs)`, `source(SourceId)`, and a producer annotation.
@@ -1337,10 +1419,31 @@ been deleted.
 Revision note (2026-08-08, remaining same-JVM work): Added one bounded WP7 for
 the remaining two-agent lifecycle and capability findings. It defines
 source-scoped opportunistic materialized views, cleanup of single-percept
-derivations, overlapping default LangChain4j calls with correlated full logs,
+derivations, overlapping default LangChain4j calls with the existing full-log
+format preserved and both experiment report pipelines used as regression gates,
 deterministic JaCaMo runtime cache invalidation, removal of the A2A cache's
 network-wide critical section, the caller-independent card-cache contract, the
 trusted logical agent-name boundary, and continued Hypermedea `0.4.2` pinning.
 Upstream source comparison records that Hypermedea `0.5` retains the same
 static representation-handler `ServiceLoader`. The former release and
 additional-consumer packages are renumbered WP8 and WP9.
+
+Revision note (2026-08-08, WP7 log/runtime clarification): Kept the
+`Full LLM request:` and `Full LLM response:` records and their multiline
+payload layout unchanged, reduced the concurrency documentation requirement to
+one brief contract statement, and added the `ccrs-bdi` plus `ccrs-react`
+PowerShell report generators as explicit compatibility gates. Baseline
+execution passed the BDI 2/2 black-box suite and both real React report batches.
+Clarified throughout that evaluator invalidation creates one new process-wide
+configuration generation shared by all agents; it does not create per-agent
+configuration.
+
+Revision note (2026-08-08, WP7 completion): Implemented per-agent,
+source/evidence-owned opportunistic materialized views and Jason deletion
+events; centralized the process-wide evaluator generation in
+`CcrsJacamoRuntime`; proved overlapping core and LangChain4j calls; removed A2A
+card resolution from the shared cache operation; retained and documented the
+Hypermedea 0.4.2 conversion monitor; and clarified trusted logical agent-name
+routing. Recorded 124 passing tests, a 39-task composite build, exact 0.4.2
+dependency selection, and passing BDI/React report compatibility gates. WP7 is
+Done and WP8 is Next.
