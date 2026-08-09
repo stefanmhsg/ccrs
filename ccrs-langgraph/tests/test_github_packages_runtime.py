@@ -11,16 +11,17 @@ from ccrs_langgraph.java_runtime import CcrsJavaRuntime
 
 class GithubPackagesRuntimeTest(TestCase):
     def test_snapshot_runtime_refreshes_and_uses_the_bundled_resolver(self) -> None:
+        runtime_cache = Path("runtime-cache").resolve()
         runtime = CcrsJavaRuntime.from_github_packages(
             version="0.1.0-SNAPSHOT",
             modules=("ccrs-core", "ccrs-a2a"),
-            github_packages_cache=Path("C:/runtime-cache"),
-            resolver_dir=Path("C:/resolver"),
+            github_packages_cache=runtime_cache,
+            resolver_dir=Path("resolver").resolve(),
         )
 
         self.assertEqual("github_packages", runtime.artifact_source)
         self.assertTrue(runtime.refresh_dependencies)
-        self.assertEqual(Path("C:/runtime-cache"), runtime.github_packages_cache)
+        self.assertEqual(runtime_cache, runtime.github_packages_cache)
 
     def test_release_runtime_does_not_refresh_unless_requested(self) -> None:
         runtime = CcrsJavaRuntime.from_github_packages(version="1.2.3")
@@ -34,12 +35,13 @@ class GithubPackagesRuntimeTest(TestCase):
         find_java_executable,
         run,
     ) -> None:
-        resolver_dir = Path("C:/resolver")
+        resolver_dir = Path("resolver").resolve()
+        runtime_cache = Path("runtime-cache").resolve()
         wrapper = resolver_dir / "gradle" / "wrapper" / "gradle-wrapper.jar"
         runtime = CcrsJavaRuntime.from_github_packages(
             version="0.1.0-SNAPSHOT",
             modules=("ccrs-core", "ccrs-langchain4j"),
-            github_packages_cache=Path("C:/runtime-cache"),
+            github_packages_cache=runtime_cache,
             resolver_dir=resolver_dir,
         )
         find_java_executable.return_value = Path("C:/java/bin/java.exe")
@@ -51,10 +53,10 @@ class GithubPackagesRuntimeTest(TestCase):
         command = run.call_args.args[0]
         self.assertEqual(str(wrapper), command[2])
         self.assertIn("-PccrsModules=ccrs-core,ccrs-langchain4j", command)
-        self.assertIn(f"-PccrsRuntimeDirectory={Path('C:/runtime-cache')}", command)
+        self.assertIn(f"-PccrsRuntimeDirectory={runtime_cache}", command)
         self.assertIn("--project-cache-dir", command)
         self.assertIn(
-            str(Path("C:/runtime-cache").parent / "gradle-project-cache"),
+            str(runtime_cache.parent / "gradle-project-cache"),
             command,
         )
         self.assertIn("--refresh-dependencies", command)
