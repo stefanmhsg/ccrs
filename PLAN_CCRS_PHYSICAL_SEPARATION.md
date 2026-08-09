@@ -159,8 +159,19 @@ unchanged.
   package-owning `ccrs` repository. Removed the package source and packaging
   metadata from `ccrs-react`, which now retains only concrete application
   wiring and integration tests.
+- [x] (2026-08-09 18:54Z) Published `ccrs-langgraph-v0.1.0` through release run
+  [31330186805](https://github.com/stefanmhsg/ccrs/actions/runs/31330186805).
+  The clean wheel import, reusable tests, Java GitHub Packages resolution,
+  JPype smoke, and wheel/source upload all passed.
 
 ## Surprises & Discoveries
+
+- Observation: The first Linux release run exposed Windows-specific path
+  literals in two resolver unit tests; production resolution was unaffected.
+  Evidence: Run 31330094114 passed wheel build/import but compared Linux
+  resolved paths with `C:/...` expectations. Commit `b4e2cdb` changed the tests
+  to use platform-native `Path.resolve()` inputs, after which run 31330186805
+  passed every gate.
 
 - Observation: The current split is already valid at the Java import and local artifact level, but not at the source-build level.
   Evidence: All five publications succeeded and the separate core consumer ran, while module build files still declare dependencies such as `api project(':ccrs-core')` and inherit publishing from the application root.
@@ -1038,11 +1049,11 @@ application tests while importing the installed package. A remote
 `requirements.txt` install becomes available after the matching scoped tag is
 published.
 
-Outcome and notes: Completed locally on 2026-08-09. The canonical source is
+Outcome and notes: Completed and released on 2026-08-09. The canonical source is
 `ccrs/ccrs-langgraph`; `ccrs-react` has no adapter source, build metadata, or
-release workflow duplicate. Remote release publication remains a later
-push/tag action, not part of this filesystem cutover. Twenty-three reusable
-package tests and seven application tests passed. A clean wheel environment
+release workflow duplicate. Release tag `ccrs-langgraph-v0.1.0` publishes the
+wheel and source archive from this repository. Twenty-three reusable package
+tests and seven application tests passed. A clean wheel environment
 outside both repositories imported all 28 modules with `react_agent` absent,
 contained exactly the four intended Gradle resolver files, resolved
 `ccrs-core:0.1.0-SNAPSHOT` from GitHub Packages, and loaded
@@ -1487,3 +1498,9 @@ Hypermedea 0.4.2 conversion monitor; and clarified trusted logical agent-name
 routing. Recorded 124 passing tests, a 39-task composite build, exact 0.4.2
 dependency selection, and passing BDI/React report compatibility gates. WP7 is
 Done and WP8 is Next.
+
+Revision note (2026-08-09, WP9 release completion): Recorded the canonical
+`ccrs-langgraph-v0.1.0` release, successful run 31330186805, its wheel and
+source assets, and the Linux path-test correction that made the release gate
+portable. `ccrs-react` was then validated against the downloaded release wheel
+before its consumer commits were pushed.
