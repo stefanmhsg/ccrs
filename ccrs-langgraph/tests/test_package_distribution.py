@@ -12,7 +12,7 @@ from ccrs_langgraph.java_runtime import CcrsJavaRuntime
 
 class PackageDistributionTest(TestCase):
     def test_public_api_exposes_version_and_primary_adapter_types(self) -> None:
-        self.assertEqual("0.1.0", ccrs_langgraph.__version__)
+        self.assertEqual("0.1.1", ccrs_langgraph.__version__)
         self.assertEqual("0.1.0-SNAPSHOT", ccrs_langgraph.DEFAULT_CCRS_JAVA_VERSION)
         self.assertIn("CcrsJavaRuntime", ccrs_langgraph.__all__)
         self.assertIn("VocabularyMatcher", ccrs_langgraph.__all__)

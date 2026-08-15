@@ -96,7 +96,7 @@ consumer with a fresh Gradle user home.
 
 The Python adapter is distributed as wheel and source archives on this
 repository's GitHub Releases because GitHub Packages has no PyPI registry.
-Release tags are adapter-scoped, for example `ccrs-langgraph-v0.1.0`; see the
+Release tags are adapter-scoped, for example `ccrs-langgraph-v0.1.1`; see the
 [adapter installation guide](ccrs-langgraph/README.md) and
 [release workflow](.github/workflows/release-ccrs-langgraph.yml).
 
