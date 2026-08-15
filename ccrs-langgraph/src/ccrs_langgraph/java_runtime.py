@@ -90,6 +90,13 @@ class CcrsJavaRuntime:
     refresh_dependencies: bool = False
 
     _classes: dict[str, Any] = field(default_factory=dict, init=False, repr=False)
+    _resolved_classpath: tuple[Path, ...] | None = field(
+        default=None, init=False, repr=False
+    )
+    _resolved_specification: tuple[Any, ...] | None = field(
+        default=None, init=False, repr=False
+    )
+    _classpath_attached: bool = field(default=False, init=False, repr=False)
 
     _jvm_lock: ClassVar[threading.Lock] = threading.Lock()
     _runtime_dependencies: ClassVar[tuple[tuple[str, str, str], ...]] = (
@@ -254,25 +261,73 @@ class CcrsJavaRuntime:
         log: logging.Logger,
         log_prefix: str,
     ) -> Any:
-        """Start JPype or attach classpath entries before a Java CCRS call."""
+        """Prepare the process JVM for this runtime before a Java CCRS call.
+
+        Dependency resolution and classpath attachment happen once for each
+        runtime instance. The calling thread's context classloader and the
+        run-sensitive Java log destination are still configured on every call.
+        """
 
         jpype = require_jpype()
         with self._jvm_lock:
-            classpath = [str(path) for path in self.resolve_classpath(audit_event_namespace)]
-            if jpype.isJVMStarted():
-                log.info("%s JPype JVM already started; adding CCRS classpath entries.", log_prefix)
-                for path in classpath:
-                    jpype.addClassPath(path)
-            else:
-                log_ccrs_event(
-                    log,
-                    f"{audit_event_namespace}.jvm.start",
-                    {"classpath_entries": len(classpath)},
+            specification = self._resolution_specification()
+            if (
+                self._resolved_specification is not None
+                and self._resolved_specification != specification
+            ):
+                raise CcrsJavaRuntimeError(
+                    "CCRS Java runtime configuration changed after its classpath was resolved. "
+                    "Create a new CcrsJavaRuntime for a different artifact source, version, "
+                    "module set, cache, or extra classpath. Restart the Python process when "
+                    "replacing already-loaded Java modules."
                 )
-                jpype.startJVM(classpath=classpath, convertStrings=True)
-            self.configure_thread_context_classloader(jpype)
-            self.configure_java_logging(jpype, log, log_prefix)
+
+            if self._resolved_classpath is None:
+                resolved = tuple(self.resolve_classpath(audit_event_namespace))
+                self._resolved_classpath = resolved
+                self._resolved_specification = specification
+
+            if not self._classpath_attached:
+                classpath = [str(path) for path in self._resolved_classpath]
+                if jpype.isJVMStarted():
+                    log.info(
+                        "%s JPype JVM already started; adding CCRS classpath entries.",
+                        log_prefix,
+                    )
+                    for path in classpath:
+                        jpype.addClassPath(path)
+                else:
+                    log_ccrs_event(
+                        log,
+                        f"{audit_event_namespace}.jvm.start",
+                        {"classpath_entries": len(classpath)},
+                    )
+                    jpype.startJVM(classpath=classpath, convertStrings=True)
+                self._classpath_attached = True
+
+        # A Java thread context classloader is thread-local. Configure it for
+        # every caller so ServiceLoader provider discovery remains reliable.
+        self.configure_thread_context_classloader(jpype)
+        # The destination may change between sequential runs in one notebook.
+        # configure_java_ccrs_logging handles unchanged destinations cheaply.
+        self.configure_java_logging(jpype, log, log_prefix)
         return jpype
+
+    def _resolution_specification(self) -> tuple[Any, ...]:
+        """Return the immutable inputs represented by a resolved classpath."""
+
+        return (
+            self.group,
+            self.version,
+            tuple(self.modules),
+            self.artifact_source,
+            self.maven_repo,
+            self.gradle_cache,
+            tuple(self.extra_classpath),
+            self.github_packages_cache,
+            self.resolver_dir,
+            self.refresh_dependencies,
+        )
 
     def configure_thread_context_classloader(self, jpype: Any) -> None:
         """Expose JPype's dynamic classpath to Java APIs that use ServiceLoader."""

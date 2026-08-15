@@ -163,6 +163,13 @@ unchanged.
   [31330186805](https://github.com/stefanmhsg/ccrs/actions/runs/31330186805).
   The clean wheel import, reusable tests, Java GitHub Packages resolution,
   JPype smoke, and wheel/source upload all passed.
+- [x] (2026-08-15) Corrected the `ccrs-langgraph` JVM lifecycle so each
+  `CcrsJavaRuntime` resolves and attaches its immutable classpath once while
+  retaining per-call thread-context classloader and run-sensitive logging
+  setup. Added concurrency, retry, multi-runtime, and mutation regressions;
+  all 30 adapter tests passed. A real GitHub Packages snapshot smoke resolved
+  28 jars in 15.289 seconds on the first call and reused them in 66
+  microseconds on the second call in the same process.
 
 ## Surprises & Discoveries
 
@@ -172,6 +179,25 @@ unchanged.
   resolved paths with `C:/...` expectations. Commit `b4e2cdb` changed the tests
   to use platform-native `Path.resolve()` inputs, after which run 31330186805
   passed every gate.
+
+- Observation: [java_runtime.py](ccrs-langgraph/src/ccrs_langgraph/java_runtime.py)
+  resolved the complete GitHub Packages runtime before every opportunistic or
+  contingency Java call, even after JPype had started. Because the default
+  coordinate is a snapshot, every call also requested Gradle dependency
+  refresh and added roughly 15--18 seconds to ordinary RDF scans.
+  Evidence: A 2026-08-15 React run logged 81 successful runtime resolutions;
+  the Java vocabulary match itself continued to complete in under one
+  millisecond.
+
+- Decision: Cache successful classpath resolution and attachment per immutable
+  `CcrsJavaRuntime` specification. Keep context-classloader configuration per
+  calling thread for `ServiceLoader`, keep Java logging reconfigurable between
+  sequential runs, retry failed resolution or attachment, and reject runtime
+  specification mutation after resolution.
+  Rationale: This implements the documented once-per-runtime/process snapshot
+  lifecycle without changing opportunistic vocabulary accumulation,
+  contingency state, optional provider discovery, or run-specific logging.
+  Date/Author: 2026-08-15 / Codex
 
 - Observation: The current split is already valid at the Java import and local artifact level, but not at the source-build level.
   Evidence: All five publications succeeded and the separate core consumer ran, while module build files still declare dependencies such as `api project(':ccrs-core')` and inherit publishing from the application root.

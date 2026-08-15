@@ -112,8 +112,32 @@ For explicit construction, pass `version=` to
 `CcrsJavaRuntime.from_github_packages(...)`,
 `VocabularyMatcher.from_github_packages(...)`, or
 `ContingencyCcrs.from_github_packages(...)`. A snapshot is refreshed once per
-new Python process; a release version uses the local resolver cache unless the
-caller requests a refresh.
+new Python process, on the first resolution by that runtime; a release version
+uses the local resolver cache unless the caller requests a refresh.
+
+### Java Runtime Lifecycle
+
+Each [CcrsJavaRuntime](src/ccrs_langgraph/java_runtime.py) instance represents
+one immutable artifact source, version, module set, cache configuration, and
+extra classpath. Its first Java call resolves that runtime graph and starts or
+extends the process JVM. Later opportunistic and contingency calls reuse the
+resolved paths without launching Gradle or adding the same classpath entries
+again. A failed resolution or attachment remains retryable.
+
+Do not mutate a runtime's version, modules, repositories, caches, or extra
+classpath after its first resolution. Construct a separate runtime when an
+additional compatible module set is needed. Restart the Python process or
+notebook kernel before replacing an already-loaded module, selecting another
+CCRS version, or changing provider modules or their environment. JPype cannot
+unload an already-loaded Java class, so resolving a newer snapshot inside the
+same process cannot safely replace its implementation.
+
+Classpath reuse does not make Java setup global to one caller. Every call still
+sets the JPype context classloader for its current Java thread so
+`ServiceLoader` capability discovery remains reliable. It also invokes
+[java_logging.py](src/ccrs_langgraph/java_logging.py), whose own path cache is
+cheap when unchanged but allows sequential runs in one notebook process to
+select different companion log files.
 
 ### Releasing
 
@@ -756,6 +780,11 @@ Important React contingency event names:
 - `react.ccrs.stop.accepted`
 - `react.ccrs.stop.declined`
 - `react.ccrs.stop.invalid`
+
+Classpath resolution and JVM-start events are lifecycle events. They occur
+when a `CcrsJavaRuntime` first prepares its runtime graph, not once per CCRS
+evaluation. Opportunistic and contingency runtime-ready events remain scoped
+to the corresponding Java wrapper initialization.
 
 Important contingency-produced opportunistic guidance event names:
 
