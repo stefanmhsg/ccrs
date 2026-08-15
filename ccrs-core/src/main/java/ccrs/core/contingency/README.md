@@ -125,7 +125,7 @@ Candidate checkpoints must be reachable and retain at least one unexplored alter
 3. greater recency;
 4. higher validation score.
 
-The selected suggestion has action `navigate` and targets the checkpoint. Its `backtrackPath` excludes the current resource and starts with the first navigation step the agent can execute. Additional parameters describe alternatives, exhausted branches, graph size, distance, and validation. Confidence increases with useful alternatives and decreases with travel distance. Structured opportunistic guidance exposes both path steps and unexplored options to adapters that integrate contingency advice into normal prioritization.
+The selected suggestion has action `navigate` and targets the checkpoint. Its `backtrackPath` excludes the current resource and starts with the first navigation step the agent can execute. The returned action parameters remain bounded: they describe the selected checkpoint, path, graph size, distance, validation, and selected-checkpoint alternative counts. Full `alternativesByCheckpoint`, `exhaustedByCheckpoint`, and `backtrackDistances` maps are emitted through strategy logging instead of being returned to the agent. Confidence increases with useful alternatives and decreases with travel distance. Structured opportunistic guidance exposes both path steps and unexplored options to adapters that integrate contingency advice into normal prioritization.
 
 The interaction window is bounded by [BacktrackStrategyOptions.java](options/BacktrackStrategyOptions.java).
 

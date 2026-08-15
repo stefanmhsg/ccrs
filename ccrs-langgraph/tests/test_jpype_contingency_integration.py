@@ -248,7 +248,9 @@ class JpypeContingencyIntegrationTest(unittest.TestCase):
         self.assertEqual(checkpoint, suggestion["action_target"])
         self.assertEqual([transit, checkpoint], suggestion["action_params"]["backtrackPath"])
         self.assertEqual(2, suggestion["action_params"]["backtrackDistance"])
-        self.assertEqual([unexplored], suggestion["action_params"]["alternativesByCheckpoint"][checkpoint])
+        self.assertNotIn("alternativesByCheckpoint", suggestion["action_params"])
+        self.assertNotIn("exhaustedByCheckpoint", suggestion["action_params"])
+        self.assertNotIn("backtrackDistances", suggestion["action_params"])
         recorded_trace = context.ccrs_history.getCcrsHistory(10)[0]
         self.assertEqual(
             ["retry", "backtrack"],

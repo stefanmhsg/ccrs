@@ -327,7 +327,8 @@ public class BacktrackStrategy implements CcrsStrategy {
             confidence.raw(), confidence.value(),
             bestCheckpoint.unexploredAlternatives().size(), bestCheckpoint.backtrackDistance()));
         
-        // Build parameter maps
+        // Keep ranked checkpoint collections in logs rather than returning
+        // potentially unbounded data as agent-facing action parameters.
         Map<String, List<String>> alternativesByCheckpoint = rankedCheckpoints.stream()
             .collect(Collectors.toMap(
                 CheckpointCandidate::uri,
@@ -342,6 +343,10 @@ public class BacktrackStrategy implements CcrsStrategy {
             .collect(Collectors.toMap(
                 CheckpointCandidate::uri,
                 CheckpointCandidate::backtrackDistance));
+
+        logger.info("[Backtrack] alternativesByCheckpoint=" + alternativesByCheckpoint);
+        logger.info("[Backtrack] exhaustedByCheckpoint=" + exhaustedByCheckpoint);
+        logger.info("[Backtrack] backtrackDistances=" + backtrackDistances);
         
         // B2: Generate OpportunisticResult mental notes
         // TODO: Correct the opportunistic result, following the standard structure.
@@ -355,9 +360,6 @@ public class BacktrackStrategy implements CcrsStrategy {
             .param("reason", "backtrack_to_checkpoint")
             .param("fromResource", current)
             .param("backtrackPath", backtrackPath)
-            .param("alternativesByCheckpoint", alternativesByCheckpoint)
-            .param("exhaustedByCheckpoint", exhaustedByCheckpoint)
-            .param("backtrackDistances", backtrackDistances)
             .param("checkpointSource", bestCheckpoint.source().name())
             .param("unexploredCount", bestCheckpoint.unexploredAlternatives().size())
             .param("exhaustedCount", bestCheckpoint.exhaustedAlternatives().size())

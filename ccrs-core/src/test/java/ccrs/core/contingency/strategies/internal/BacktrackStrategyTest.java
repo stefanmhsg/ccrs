@@ -8,6 +8,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 
@@ -157,13 +158,20 @@ class BacktrackStrategyTest {
         assertEquals(2, suggestion.<Integer>getActionParam("temporalDistance"));
         assertTrue(suggestion.getConfidence() >= 0.1);
         assertTrue(suggestion.getConfidence() <= 0.9);
-
-        Map<String, List<String>> alternatives = suggestion.getActionParam("alternativesByCheckpoint");
-        Map<String, List<String>> exhausted = suggestion.getActionParam("exhaustedByCheckpoint");
-        Map<String, Integer> distances = suggestion.getActionParam("backtrackDistances");
-        assertEquals(List.of(unexplored), alternatives.get(checkpoint));
-        assertEquals(List.of(), exhausted.get(checkpoint));
-        assertEquals(2, distances.get(checkpoint));
+        assertEquals(
+            Set.of(
+                "reason",
+                "fromResource",
+                "backtrackPath",
+                "checkpointSource",
+                "unexploredCount",
+                "exhaustedCount",
+                "backtrackDistance",
+                "temporalDistance",
+                "validationScore",
+                "interactionGraphNodeCount",
+                "interactionGraphEdgeCount"),
+            suggestion.getActionParams().keySet());
 
         List<OpportunisticResult> guidance = suggestion.getOpportunisticGuidance();
         assertEquals(3, guidance.size());
@@ -196,11 +204,8 @@ class BacktrackStrategyTest {
                 "https://example.test/far-option-3"));
 
         StrategyResult.Suggestion suggestion = evaluateSuggestion(blocked, history);
-        Map<String, Integer> distances = suggestion.getActionParam("backtrackDistances");
 
         assertEquals(closer, suggestion.getActionTarget());
-        assertEquals(1, distances.get(closer));
-        assertEquals(3, distances.get(farther));
     }
 
     @Test
