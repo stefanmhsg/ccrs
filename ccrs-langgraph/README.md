@@ -467,8 +467,27 @@ adapter intentionally keeps the state surface small:
 | --- | --- | --- |
 | `opportunistic_ccrs` | Append-only opportunistic annotations produced from tool observations. | Injected when an entry's `tool_call_id` matches the latest LLM tool call ids. |
 | `contingency_ccrs` | Append-only contingency traces/results. Entries without `completed=True` are pending. | Injected once in the next LLM node call, then marked completed through the reducer. |
-| `opportunistic_guidance_by_contingency_ccrs` | Replaceable channel produced by the latest contingency evaluation. A new contingency evaluation replaces the whole channel. | Injected when a guidance `target` appears exactly as an RDF subject or object in the latest parseable tool response. |
+| `opportunistic_guidance_by_contingency_ccrs` | Replaceable channel produced by the latest contingency evaluation. A new contingency evaluation replaces the whole channel. | Injected when a guidance `target` appears exactly as an RDF subject or object in the latest tool response, provided that response is valid Turtle. |
 | `contingency_situation` | Transient input that asks the CCRS node to run contingency evaluation. | Not prompt-injected directly; consumed by `ccrs_node` and then cleared. |
+
+### Intentional fuzzy relevance for contingency-produced guidance
+
+[contingency/opportunistic_guidance.py](src/ccrs_langgraph/contingency/opportunistic_guidance.py)
+uses an intentionally fuzzy, evidence-based relevance heuristic. It parses only
+the latest `ToolMessage` and selects every stored guidance entry whose `target`
+occurs as an RDF subject or object in that response. It does not infer an
+environment-specific current resource, treat a request URI as the agent's
+location, interpret strategy-specific metadata such as Backtrack's `from`
+field, or impose path-order semantics. It also does not search backward for an
+older GET response when the latest tool response is absent or invalid Turtle.
+
+This heuristic can expose several advisory entries when one RDF representation
+mentions several guidance targets, including linked resources. That limited
+noise is an accepted tradeoff: contingency-produced opportunistic guidance is
+decision support, while stricter filtering would require assumptions about an
+agent's state, tool effects, environment navigation semantics, or individual
+contingency strategies. The complete guidance batch remains available until a
+later contingency evaluation replaces it.
 
 The trace-history object used by contingency CCRS must survive across CCRS
 cycles in the same graph execution. This allows retry limits, Stop degradation

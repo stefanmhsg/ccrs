@@ -20,7 +20,15 @@ def get_opportunistic_guidance_by_contingency_ccrs(
     state: CcrsAgentState,
     config: RunnableConfig,
 ) -> list[dict[str, Any]]:
-    """Return contingency-produced guidance whose target matches the latest RDF response."""
+    """Return guidance using the adapter's intentionally fuzzy RDF target match.
+
+    The latest tool response is the complete relevance boundary. A guidance
+    target matches when it occurs as any RDF subject or object in that response;
+    the adapter does not infer a current resource, inspect strategy metadata, or
+    impose path-order semantics. Consequently, one response may expose multiple
+    advisory entries. An absent, non-string, or invalid Turtle response exposes
+    none, without falling back to an older tool response.
+    """
 
     guidance = state.get("opportunistic_guidance_by_contingency_ccrs", []) or []
     if not guidance:
