@@ -170,6 +170,12 @@ unchanged.
   all 30 adapter tests passed. A real GitHub Packages snapshot smoke resolved
   28 jars in 15.289 seconds on the first call and reused them in 66
   microseconds on the second call in the same process.
+- [x] (2026-08-15 15:33Z) Published
+  [`ccrs-langgraph-v0.1.1`](https://github.com/stefanmhsg/ccrs/releases/tag/ccrs-langgraph-v0.1.1)
+  through release run
+  [31892987367](https://github.com/stefanmhsg/ccrs/actions/runs/31892987367).
+  The clean wheel install, 30 reusable tests, GitHub Packages resolution,
+  JPype class-loading smoke, and wheel/source asset upload all passed.
 
 ## Surprises & Discoveries
 
