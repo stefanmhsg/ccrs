@@ -13,13 +13,14 @@ import ccrs.capabilities.ConfigResolver;
  * - System properties
  */
 public class Langchain4jConfig {
-    private static final String DEFAULT_OPENAI_MODEL = "gpt-5.5"; // gpt-5.4-mini-2026-03-17 / gpt-5.4
-    private static final Double DEFAULT_TEMPERATURE = 1.0; // gpt-5.5 only accepts 1.0
+    private static final String DEFAULT_OPENAI_MODEL = "gpt-6-astra";
+    private static final String DEFAULT_REASONING_EFFORT = "medium";
     
     // Connection settings
     private final String apiKey;
     private final String baseUrl;
     private final String modelName;
+    private final String reasoningEffort;
     
     // Model parameters
     private final Double temperature;
@@ -40,6 +41,7 @@ public class Langchain4jConfig {
         this.apiKey = builder.apiKey;
         this.baseUrl = builder.baseUrl;
         this.modelName = builder.modelName;
+        this.reasoningEffort = builder.reasoningEffort;
         this.temperature = builder.temperature;
         this.maxTokens = builder.maxTokens;
         this.topP = builder.topP;
@@ -63,6 +65,10 @@ public class Langchain4jConfig {
     
     public String getModelName() {
         return modelName;
+    }
+
+    public String getReasoningEffort() {
+        return reasoningEffort;
     }
     
     public Double getTemperature() {
@@ -172,7 +178,6 @@ public class Langchain4jConfig {
         return builder()
             .apiKey(apiKey)
             .modelName(DEFAULT_OPENAI_MODEL)
-            .temperature(DEFAULT_TEMPERATURE)
             .build();
     }
     
@@ -182,7 +187,6 @@ public class Langchain4jConfig {
     public static Langchain4jConfig openAiFromEnv() {
         return fromEnvironment()
             .modelName(DEFAULT_OPENAI_MODEL)
-            .temperature(DEFAULT_TEMPERATURE)
             .build();
     }
     
@@ -191,6 +195,7 @@ public class Langchain4jConfig {
         return "Langchain4jConfig{" +
             "baseUrl='" + baseUrl + '\'' +
             ", modelName='" + modelName + '\'' +
+            ", reasoningEffort='" + reasoningEffort + '\'' +
             ", apiKey='" + (apiKey != null ? "[REDACTED]" : "null") + '\'' +
             ", temperature=" + temperature +
             ", maxTokens=" + maxTokens +
@@ -204,7 +209,8 @@ public class Langchain4jConfig {
         private String apiKey;
         private String baseUrl;
         private String modelName = DEFAULT_OPENAI_MODEL;
-        private Double temperature = DEFAULT_TEMPERATURE;
+        private String reasoningEffort = DEFAULT_REASONING_EFFORT;
+        private Double temperature; // Omitted by default: GPT-6 Astra does not support custom values.
         private Integer maxTokens;
         private Double topP;
         private Duration timeout = Duration.ofSeconds(60);
@@ -226,6 +232,11 @@ public class Langchain4jConfig {
         
         public Builder modelName(String modelName) {
             this.modelName = modelName;
+            return this;
+        }
+
+        public Builder reasoningEffort(String reasoningEffort) {
+            this.reasoningEffort = reasoningEffort;
             return this;
         }
         

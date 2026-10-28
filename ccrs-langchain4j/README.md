@@ -19,6 +19,14 @@ contracts, response parsing, and LLM strategy behavior belong to `ccrs-core`:
 Keeping these pieces in core means the same strategy prompt and parser can be
 used with any `LlmClient` implementation, not only LangChain4j.
 
+[`Langchain4jConfig.java`](src/main/java/ccrs/capabilities/llm/langchain4j/Langchain4jConfig.java)
+defaults to `gpt-6-astra` with `reasoning_effort="medium"`. Temperature, `top_p`,
+and `logprobs` are omitted by default. The configuration builder exposes
+`reasoningEffort(String)` for explicit overrides; `null` omits the parameter.
+The service-loaded provider reads the model name from `OPENAI_MODEL`, falling
+back to `LLM_MODEL` and then the configured default. When selecting another
+model, use reasoning and sampling parameters that it supports.
+
 The published module exposes `dev.langchain4j:langchain4j-core` as an API
 dependency because
 [`Langchain4jLlmClient.java`](src/main/java/ccrs/capabilities/llm/langchain4j/Langchain4jLlmClient.java)

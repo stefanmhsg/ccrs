@@ -193,6 +193,9 @@ public class Langchain4jLlmClient implements LlmClient {
             }
             
             // Model parameters
+            if (cfg.getReasoningEffort() != null) {
+                builder.reasoningEffort(cfg.getReasoningEffort());
+            }
             if (cfg.getTemperature() != null) {
                 builder.temperature(cfg.getTemperature());
             }
