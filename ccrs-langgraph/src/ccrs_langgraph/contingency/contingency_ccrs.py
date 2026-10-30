@@ -8,6 +8,8 @@ results into dictionaries for the React/LangGraph adapter.
 from __future__ import annotations
 
 import logging
+import json
+import uuid
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -106,11 +108,13 @@ class ContingencyCcrs:
         self._ensure_runtime()
         java_situation = self._to_java_situation(normalized)
         java_context, trace_recorder = self._to_java_context(context, normalized)
+        invocation_id = str(uuid.uuid4())
 
         log_ccrs_event(
             logger,
             "react.ccrs.contingency.evaluate",
             {
+                "invocation_id": invocation_id,
                 **self._strategy_policy_fields(),
                 "trigger": normalized.trigger,
                 "current_resource": normalized.current_resource,
@@ -123,7 +127,7 @@ class ContingencyCcrs:
         )
 
         try:
-            trace = self._contingency_ccrs.evaluateWithTrace(java_situation, java_context)
+            trace = self._contingency_ccrs.evaluateWithTrace(java_situation, java_context, invocation_id)
             if trace_recorder is not None:
                 trace_recorder.recordCcrsInvocation(trace)
             else:
@@ -137,6 +141,8 @@ class ContingencyCcrs:
             logger,
             "react.ccrs.contingency.returned",
             {
+                "invocation_id": invocation_id,
+                "selected_results": json.dumps(result.get("selected_results", []), ensure_ascii=False),
                 **self._strategy_policy_fields(),
                 "trace_id": result.get("trace_id"),
                 "evaluations": len(result.get("evaluations", [])),

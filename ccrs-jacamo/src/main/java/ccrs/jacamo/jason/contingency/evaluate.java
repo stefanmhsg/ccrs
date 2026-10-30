@@ -84,7 +84,9 @@ public class evaluate extends DefaultInternalAction {
         }
 
         logger.info("[ContingencyCcrs] Evaluating situation: " + situation + " with context");
+        String invocationId = java.util.UUID.randomUUID().toString();
         CcrsEventLogger.info(logger, "ccrs.contingency.evaluate.request", CcrsEventLogger.fields(
+            "invocation_id", invocationId,
             "agent_id", context.getAgentId(),
             "trigger", situation.getTrigger(),
             "current_resource", situation.getCurrentResource(),
@@ -97,21 +99,21 @@ public class evaluate extends DefaultInternalAction {
         ));
 
         // Evaluate Contingency Strategies via the default path, which also records trace history.
-        List<StrategyResult> results = ccrs.evaluate(situation, context);
+        List<StrategyResult> results = ccrs.evaluate(situation, context, invocationId);
 
         logger.info("[ContingencyCcrs] Evaluation produced " + results.size() + " results.");
-        logEvaluationReturned(context, results);
         
         // Inject OpportunisticResult mental notes as ccrs/3 beliefs (B2)
         injectOpportunisticNotes(ts, results);
 
         ListTerm resultList = buildResultList(results);
+        logEvaluationReturned(context, invocationId, results, resultList);
         logger.info("[ContingencyCcrs] Result list: " + resultList);
         Term out = args[args.length - 1];
         return un.unifies(out, resultList);
     }
 
-    private void logEvaluationReturned(CcrsContext context, List<StrategyResult> results) {
+    private void logEvaluationReturned(CcrsContext context, String invocationId, List<StrategyResult> results, ListTerm resultList) {
         StrategyResult.Suggestion topSuggestion = null;
         int suggestionCount = 0;
         int opportunisticGuidanceCount = 0;
@@ -132,6 +134,8 @@ public class evaluate extends DefaultInternalAction {
         }
 
         CcrsEventLogger.info(logger, "ccrs.contingency.evaluate.returned", CcrsEventLogger.fields(
+            "invocation_id", invocationId,
+            "selected_results", resultList.toString(),
             "agent_id", context.getAgentId(),
             "result_count", results.size(),
             "suggestion_count", suggestionCount,

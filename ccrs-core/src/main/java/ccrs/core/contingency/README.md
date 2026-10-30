@@ -36,6 +36,21 @@ The agent-agnostic core depends on the RDF-focused [CcrsContext.java](../rdf/Ccr
 
 ## Core APIs
 
+Structured audit events carry UTC emission timestamps. Contingency callers may
+pass an invocation UUID to the three-argument `evaluate` or `evaluateWithTrace`
+overload; the returned trace uses that identity. Strategy records include the same
+`invocation_id`, a per-invocation `strategy_evaluation_id`, evaluation order,
+escalation level, applicability and `strategy_body_executed`. The last field
+distinguishes an applicability-only check from an actual strategy body invocation.
+Selection policy and returned suggestions are unchanged by these audit fields.
+
+`evaluation_time_ms` and trace total evaluation time use monotonic elapsed time.
+The strategy scope begins immediately before applicability checking and ends after
+evaluation/result logging, before emitting the structured strategy event. Skipped
+applicability checks can therefore have a nonzero recorded cost. UTC timestamps are
+separate wall-clock observations for cross-stream alignment; they do not calculate
+elapsed strategy cost. Older captured durations retain their original clock semantics.
+
 - [Situation.java](dto/Situation.java) is the primary input DTO. It records evidence known by the caller without classifying the request or selecting a strategy.
 - [StrategyResult.java](dto/StrategyResult.java) is the output type. A `Suggestion` contains actionable advice, confidence, rationale, and parameters; `NoHelp` explains why a strategy did not provide guidance.
 - [CcrsStrategy.java](CcrsStrategy.java) defines strategy identity, category, escalation level, applicability, evaluation, enabled state, and description.
@@ -502,7 +517,7 @@ ccrs.jacamo.jason.contingency.evaluate(
 );
 ```
 
-The result is a list of `suggestion(...)` terms. Consumers should inspect the proposed action and confidence. A `stop` action is advice to consider ending the run, not an automatic termination command. See the [JaCaMo contingency README.md](../../../../../../../ccrs-jacamo/src/main/java/ccrs/jacamo/jason/contingency/README.md) for the adapter contract. The application-owned [examples.asl](../../../../../../../src/agt/examples/contingency/examples.asl) contains complete handler patterns and is not packaged in the JaCaMo library.
+The result is a list of `suggestion(...)` terms. Consumers should inspect the proposed action and confidence. A `stop` action is advice to consider ending the run, not an automatic termination command. See the [JaCaMo contingency README.md](../../../../../../../ccrs-jacamo/src/main/java/ccrs/jacamo/jason/contingency/README.md) for the adapter contract. The application-owned [examples.asl](../../../../../../../../ccrs-bdi/src/agt/examples/contingency/examples.asl) contains complete handler patterns and is not packaged in the JaCaMo library.
 
 ## Configuration
 

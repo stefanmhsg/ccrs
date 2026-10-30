@@ -8,6 +8,13 @@ ccrs.jacamo.jason.contingency.evaluate(ContextMap, Suggestions)
 
 `ContextMap` is a Jason `map(...)` containing any available evidence. Strategies decide applicability; the caller does not select a request category or strategy.
 
+Structured request and returned events carry the same invocation UUID as core
+strategy-evaluation events, plus UTC emission timestamps. The returned event
+records the exact AgentSpeak result list. These observational fields do not change
+the internal-action signature or strategy policy. The adapter and core must be
+built/released together for this overload; existing captures without UUIDs retain
+their weaker correlation evidence.
+
 ## Supported evidence
 
 ```asl
@@ -78,7 +85,7 @@ The output is a list of `suggestion(...)` terms. Consumers should inspect the pr
 The Java `CcrsContext` supplied through `CcrsJasonServices` owns interaction and trace history for the agent run. Keep that service/context instance stable across invocations.
 
 The application-owned
-[examples.asl](../../../../../../../../src/agt/examples/contingency/examples.asl)
+[examples.asl](../../../../../../../../../ccrs-bdi/src/agt/examples/contingency/examples.asl)
 contains complete AgentSpeak handler patterns. It is not packaged in this
 module and is not part of the supported JaCaMo library runtime contract. See the
 [core contingency README.md](../../../../../../../../ccrs-core/src/main/java/ccrs/core/contingency/README.md)

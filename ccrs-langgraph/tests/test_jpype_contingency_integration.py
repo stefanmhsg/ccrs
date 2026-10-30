@@ -52,6 +52,20 @@ def _core_artifact_available() -> bool:
 class JpypeContingencyIntegrationTest(unittest.TestCase):
     """Exercise the production JPype runtime and conversion path end to end."""
 
+    def test_audit_request_return_and_java_trace_share_invocation_identity(self) -> None:
+        ccrs = ContingencyCcrs.from_maven_local(contingency_configuration={"max_level": 1})
+        with self.assertLogs("ccrs_langgraph.contingency.contingency_ccrs", level="INFO") as captured:
+            result = ccrs.evaluate(Situation(trigger="fixture", current_resource=CURRENT,
+                target_resource=CURRENT, failed_action="GET", error_info={"httpStatus":503}),
+                InMemoryCcrsContext(agent_id="offline-audit"))
+        request = next(line for line in captured.output if "event=react.ccrs.contingency.evaluate " in line)
+        returned = next(line for line in captured.output if "event=react.ccrs.contingency.returned " in line)
+        for event in (request, returned):
+            self.assertIn("invocation_id=" + result["trace_id"], event)
+            self.assertIn("timestamp_utc=", event)
+        self.assertIn("selected_results=", returned)
+        self.assertEqual("retry", result["selected_results"][0]["strategy_id"])
+
     def test_runtime_loads_core_classes_and_default_strategies(self) -> None:
         ccrs = ContingencyCcrs.from_maven_local()
 

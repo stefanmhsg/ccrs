@@ -22,6 +22,14 @@ and contingency CCRS
 
 ## Adapter Role
 
+The development source emits UTC timestamps on structured audit events and shares
+one invocation UUID between Python request/return events and Java strategy events.
+Returned events retain the selected result payload. This instrumentation requires
+the core overload accepting that UUID; update the core artifacts and adapter wheel
+together before a later experiment. It is not present merely because an existing
+released wheel is installed. These records observe execution without changing
+strategy selection or the LLM's action policy.
+
 The adapter has three responsibilities:
 
 1. Convert React/LangGraph data into Java CCRS inputs.

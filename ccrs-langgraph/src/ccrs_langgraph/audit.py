@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Any, Mapping
 
 
@@ -20,7 +21,8 @@ def log_ccrs_event(
         return
 
     parts = [EVENT_PREFIX, f"event={_format_value(event)}"]
-    for key, value in (fields or {}).items():
+    timed_fields = {**(fields or {}), "timestamp_utc": datetime.now(timezone.utc).isoformat()}
+    for key, value in timed_fields.items():
         if not key:
             continue
         parts.append(f"{key}={_format_value(value)}")

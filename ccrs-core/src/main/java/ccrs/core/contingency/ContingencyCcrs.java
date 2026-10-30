@@ -113,7 +113,12 @@ public class ContingencyCcrs {
      * @return List of suggestions, best first (may be empty)
      */
     public List<StrategyResult> evaluate(Situation situation, CcrsContext context) {
-        CcrsTrace trace = evaluateWithTrace(situation, context);
+        return evaluate(situation, context, java.util.UUID.randomUUID().toString());
+    }
+
+    /** Evaluate normally while retaining a caller-supplied UUID for audit correlation. */
+    public List<StrategyResult> evaluate(Situation situation, CcrsContext context, String invocationId) {
+        CcrsTrace trace = evaluateWithTrace(situation, context, invocationId);
         context.recordCcrsInvocation(trace);
         logger.info("[ContingencyCcrs] Recorded trace:\n" + trace.toDetailedReport());
         return trace.getSelectedResults();
@@ -127,8 +132,13 @@ public class ContingencyCcrs {
      * @return Trace containing all evaluations and selected results
      */
     public CcrsTrace evaluateWithTrace(Situation situation, CcrsContext context) {
-        long startTime = System.currentTimeMillis();
-        CcrsTrace.Builder traceBuilder = CcrsTrace.builder(situation);
+        return evaluateWithTrace(situation, context, java.util.UUID.randomUUID().toString());
+    }
+
+    /** Trace evaluation with a shared adapter/core UUID; selection policy is unchanged. */
+    public CcrsTrace evaluateWithTrace(Situation situation, CcrsContext context, String invocationId) {
+        long startTime = System.nanoTime();
+        CcrsTrace.Builder traceBuilder = CcrsTrace.builder(situation).invocationId(invocationId);
         ContingencyConfiguration evaluationConfig = config;
         StrategySelectionPolicy evaluationSelectionPolicy = strategySelectionPolicy;
         
@@ -199,9 +209,10 @@ public class ContingencyCcrs {
                 }
             }
             
-            long evalStart = System.currentTimeMillis();
+            long evalStart = System.nanoTime();
             CcrsStrategy.Applicability applicability;
             StrategyResult result = null;
+            boolean evaluationInvoked = false;
             evaluatedCount++;
             
             try {
@@ -215,6 +226,7 @@ public class ContingencyCcrs {
                     applicability == CcrsStrategy.Applicability.UNKNOWN) {
                     evaluatedCandidateAtCurrentLevel = true;
                     // Evaluate
+                    evaluationInvoked = true;
                     result = strategy.evaluate(situation, context);
                     
                     if (result.isSuggestion()) {
@@ -223,7 +235,7 @@ public class ContingencyCcrs {
                             "[ContingencyCcrs] %s produced suggestion with confidence %.3f",
                             strategy.getId(), result.asSuggestion().getConfidence()));
                         if (evaluationConfig.getEscalationPolicy() == ContingencyConfiguration.EscalationPolicy.SEQUENTIAL) {
-                            long evalTime = System.currentTimeMillis() - evalStart;
+                            long evalTime = elapsedMillis(evalStart);
                             if (shouldRecordEvaluation(strategy, result, evaluationConfig)) {
                                 traceBuilder.addEvaluation(
                                     strategy.getId(),
@@ -233,7 +245,7 @@ public class ContingencyCcrs {
                                     evalTime
                                 );
                             }
-                            logStrategyEvent(context, strategy.getId(), result, evalTime);
+                            logStrategyEvent(context, invocationId, evaluatedCount, strategy, applicability, evaluationInvoked, result, evalTime);
                             break;
                         }
                     }
@@ -249,7 +261,7 @@ public class ContingencyCcrs {
                     strategy.getId(), e.getMessage()));
             }
             
-            long evalTime = System.currentTimeMillis() - evalStart;
+            long evalTime = elapsedMillis(evalStart);
             
             if (shouldRecordEvaluation(strategy, result, evaluationConfig)) {
                 traceBuilder.addEvaluation(
@@ -260,7 +272,7 @@ public class ContingencyCcrs {
                     evalTime
                 );
             }
-            logStrategyEvent(context, strategy.getId(), result, evalTime);
+            logStrategyEvent(context, invocationId, evaluatedCount, strategy, applicability, evaluationInvoked, result, evalTime);
         }
         
         // Rank already-derived suggestions by confidence only.
@@ -273,7 +285,7 @@ public class ContingencyCcrs {
             rankedResults = keepOpportunisticGuidanceOnlyForWinningSuggestion(rankedResults);
         }
         
-        long totalTime = System.currentTimeMillis() - startTime;
+        long totalTime = elapsedMillis(startTime);
         
         String selectionReason = buildSelectionReason(rankedResults, evaluatedCount);
         
@@ -308,9 +320,17 @@ public class ContingencyCcrs {
             top.getStrategyId(), top.getConfidence(), results.size(), totalEvaluated);
     }
 
+    private static long elapsedMillis(long startNanos) {
+        return java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
+    }
+
     private void logStrategyEvent(
             CcrsContext context,
-            String strategyId,
+            String invocationId,
+            int evaluationOrder,
+            CcrsStrategy strategy,
+            CcrsStrategy.Applicability applicability,
+            boolean evaluationInvoked,
             StrategyResult result,
             long evaluationTimeMs) {
         StrategyResult.Suggestion suggestion = result != null && result.isSuggestion()
@@ -322,7 +342,14 @@ public class ContingencyCcrs {
 
         CcrsEventLogger.info(logger, "ccrs.contingency.strategy.evaluated", CcrsEventLogger.fields(
             "agent_id", context != null ? context.getAgentId() : "unknown",
-            "strategy_id", strategyId,
+            "invocation_id", invocationId,
+            "strategy_evaluation_id", invocationId + ":" + evaluationOrder,
+            "evaluation_order", evaluationOrder,
+            "strategy_id", strategy.getId(),
+            "escalation_level", strategy.getEscalationLevel(),
+            "applicability", applicability,
+            "strategy_body_executed", evaluationInvoked,
+            "duration_clock", "monotonic",
             "result_type", result == null ? "none" : (result.isSuggestion() ? "suggestion" : "no_help"),
             "confidence", suggestion != null ? suggestion.getConfidence() : null,
             "action_type", suggestion != null ? suggestion.getActionType() : null,

@@ -336,6 +336,12 @@ public class CcrsTrace {
         private Builder(Situation situation) {
             this.situation = situation;
         }
+
+        /** Use the caller's UUID to correlate adapter, core and strategy evidence. */
+        public Builder invocationId(String invocationId) {
+            this.id = UUID.fromString(invocationId).toString();
+            return this;
+        }
         
         public Builder addEvaluation(StrategyEvaluation evaluation) {
             this.evaluations.add(evaluation);

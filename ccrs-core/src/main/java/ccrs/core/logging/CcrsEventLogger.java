@@ -4,6 +4,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.time.Instant;
 
 /**
  * Emits stable key-value CCRS events for diagnostics and downstream analysis.
@@ -28,7 +29,13 @@ public final class CcrsEventLogger {
             return;
         }
 
-        logger.log(level != null ? level : Level.INFO, format(eventName, fields));
+        Map<String, Object> timedFields = new LinkedHashMap<>();
+        if (fields != null) {
+            timedFields.putAll(fields);
+        }
+        // Stamp emission, independently of local formatter timezone or cycle anchors.
+        timedFields.put("timestamp_utc", Instant.now().toString());
+        logger.log(level != null ? level : Level.INFO, format(eventName, timedFields));
     }
 
     public static Map<String, Object> fields(Object... keyValues) {
