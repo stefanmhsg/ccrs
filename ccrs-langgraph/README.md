@@ -48,7 +48,7 @@ Packages does not offer a PyPI-compatible registry, so the Python wheel is a
 Release asset while the Java Maven artifacts remain in GitHub Packages:
 
 ```powershell
-python -m pip install "https://github.com/stefanmhsg/ccrs/releases/download/ccrs-langgraph-v0.1.2/ccrs_langgraph-0.1.2-py3-none-any.whl"
+python -m pip install "https://github.com/stefanmhsg/ccrs/releases/download/ccrs-langgraph-v0.1.3/ccrs_langgraph-0.1.3-py3-none-any.whl"
 ```
 
 For development in this repository, install the checkout in editable mode:
@@ -151,7 +151,7 @@ select different companion log files.
 
 The package version has one source of truth:
 [`_version.py`](src/ccrs_langgraph/_version.py). Update `__version__`, commit the change, and push
-the matching adapter-scoped tag, for example `ccrs-langgraph-v0.1.2`. The
+the matching adapter-scoped tag, for example `ccrs-langgraph-v0.1.3`. The
 [release workflow](../.github/workflows/release-ccrs-langgraph.yml) rejects
 a tag whose version does not match the wheel, installs the wheel as an external
 consumer, imports every packaged module, runs the reusable tests against that
